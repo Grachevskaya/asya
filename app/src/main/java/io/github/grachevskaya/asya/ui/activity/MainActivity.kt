@@ -7,7 +7,10 @@ import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.view.isVisible
 import androidx.navigation.findNavController
+import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.DynamicColorsOptions
 import io.github.grachevskaya.asya.MyApp.Companion.hmaApp
@@ -49,6 +52,13 @@ class MainActivity : AppCompatActivity() {
 
         val binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val navHost = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
+        val bottomNav = binding.bottomNav
+        bottomNav.setupWithNavController(navHost.navController)
+        navHost.navController.addOnDestinationChangedListener { _, destination, _ ->
+            bottomNav.isVisible = destination.id in BOTTOM_BAR_PLACES
+        }
     }
 
     override fun onApplyThemeResource(theme: Resources.Theme, resid: Int, first: Boolean) {
@@ -57,6 +67,10 @@ class MainActivity : AppCompatActivity() {
         theme.applyStyle(ThemeUtils.getOverlayThemeStyleRes(this), true)
 
         applyWallpaperBackgroundColor()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Nothing is saved, because the host is what would restore it: the screen is rebuilt.
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

@@ -349,6 +349,27 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), PreferenceFragmen
                 }
             }
 
+            findPreference<Preference>("backupConfig")?.apply {
+                setOnPreferenceClickListener {
+                    navigate(R.id.nav_backup_restore, BackupRestoreFragmentArgs(true).toBundle())
+                    true
+                }
+            }
+
+            findPreference<Preference>("restoreConfig")?.apply {
+                setOnPreferenceClickListener {
+                    navigate(R.id.nav_backup_restore, BackupRestoreFragmentArgs(false).toBundle())
+                    true
+                }
+            }
+
+            findPreference<Preference>("about")?.apply {
+                setOnPreferenceClickListener {
+                    navigate(R.id.nav_about)
+                    true
+                }
+            }
+
             findPreference<Preference>("clearUninstalledPackageConfigs")?.apply {
                 setOnPreferenceClickListener {
                     MaterialAlertDialogBuilder(requireContext())

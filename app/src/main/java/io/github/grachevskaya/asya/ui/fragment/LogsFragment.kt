@@ -26,12 +26,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class LogsFragment(
-    private val loadingIndicator: View,
-    private val toolbar: Toolbar,
-) : Fragment(R.layout.fragment_logs) {
-
+class LogsFragment : Fragment(R.layout.fragment_logs) {
     private val binding by viewBinding(FragmentLogsBinding::bind)
+
+    private val page get() = parentFragment as TabbedLogsFragment
+    private val loadingIndicator get() = page.sharedLoadingIndicator
+    private val toolbar get() = page.sharedToolbar
     private val adapter by lazy { LogAdapter(requireContext()) }
     private var logCache: String? = null
 

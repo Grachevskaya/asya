@@ -139,4 +139,25 @@
             app:singleLineTitle="false"
             android:title="@string/settings_disable_update" />
     </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/home_backup_and_restore">
+        <Preference
+            android:icon="@drawable/outline_backup_24"
+            android:key="backupConfig"
+            app:singleLineTitle="false"
+            android:title="@string/home_backup_config" />
+        <Preference
+            android:icon="@drawable/outline_settings_backup_restore_24"
+            android:key="restoreConfig"
+            app:singleLineTitle="false"
+            android:title="@string/home_restore_config" />
+    </PreferenceCategory>
+
+    <PreferenceCategory>
+        <Preference
+            android:icon="@drawable/outline_info_24"
+            android:key="about"
+            app:singleLineTitle="false"
+            android:title="@string/title_about" />
+    </PreferenceCategory>
 </PreferenceScreen>

@@ -15,7 +15,10 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
-import coil3.load
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import coil3.request.crossfade
 import coil3.request.placeholder
 import coil3.request.transformations
@@ -79,11 +82,6 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             contentDescription.backgroundTintList = tint
         }
 
-        /*
-         * One card around everything on this page's credits: the entries that are always shown and
-         * the folded ones below them. The styling belongs to that outer card -- a tint and a rounded
-         * clip on the inside boxes is what made it look like no card at all.
-         */
         with(binding.listPeople) {
             backgroundTintList = tint
             clipToOutline = true
@@ -152,14 +150,19 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
     fun addDevItem(layout: LinearLayout, @DrawableRes avatarResId: Int, name: String, desc: String, url: String? = null, donateUrl: String? = null) {
         val newLayout = FragmentAboutListItemBinding.inflate(layoutInflater)
 
-        // Not everyone has a picture here, and a wrong one is worse than none.
         if (avatarResId != 0) {
-            newLayout.aboutPersonIcon.setImageDrawable(RoundedBitmapDrawableFactory.create(
-                resources,
-                BitmapFactory.decodeResource(resources, avatarResId)
-            ).apply {
-                isCircular = true
-            })
+            val icon = newLayout.aboutPersonIcon
+            val context = requireContext()
+            viewLifecycleOwner.lifecycleScope.launch {
+                val bitmap = withContext(Dispatchers.IO) {
+                    BitmapFactory.decodeResource(context.resources, avatarResId)
+                }
+                icon.setImageDrawable(
+                    RoundedBitmapDrawableFactory.create(context.resources, bitmap).apply {
+                        isCircular = true
+                    }
+                )
+            }
         } else {
             newLayout.aboutPersonIcon.isVisible = false
         }

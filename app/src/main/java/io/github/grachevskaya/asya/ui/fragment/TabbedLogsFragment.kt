@@ -17,6 +17,13 @@ import io.github.grachevskaya.asya.databinding.FragmentTabbedLogsBinding
 class TabbedLogsFragment : Fragment() {
     private val binding by viewBinding(FragmentTabbedLogsBinding::bind)
 
+    /*
+     * The two pages under the tabs share this page's bar and its indicator, and they are built by the
+     * framework when the state is restored -- so they take no view of their own and ask here instead.
+     */
+    internal val sharedToolbar get() = binding.toolbar
+    internal val sharedLoadingIndicator get() = binding.loadingIndicator
+
     private val tabsList by lazy {
         listOf(
             getString(R.string.title_logs),
@@ -40,8 +47,8 @@ class TabbedLogsFragment : Fragment() {
             adapter = object : FragmentStateAdapter(childFragmentManager, lifecycle) {
                 override fun createFragment(index: Int): Fragment {
                     return when (index) {
-                        0 -> LogsFragment(binding.loadingIndicator, binding.toolbar)
-                        1 -> StatsFragment(binding.loadingIndicator, binding.toolbar)
+                        0 -> LogsFragment()
+                        1 -> StatsFragment()
                         else -> throw UnsupportedOperationException("Invalid tab index: $index")
                     }
                 }

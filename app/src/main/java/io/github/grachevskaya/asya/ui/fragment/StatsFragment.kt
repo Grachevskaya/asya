@@ -23,10 +23,10 @@ import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.databinding.FragmentLogsBinding
 import io.github.grachevskaya.asya.ui.adapter.StatAdapter
 
-class StatsFragment(
-    private val loadingIndicator: View,
-    private val toolbar: Toolbar,
-) : Fragment(R.layout.fragment_logs) {
+class StatsFragment : Fragment(R.layout.fragment_logs) {
+    private val page get() = parentFragment as TabbedLogsFragment
+    private val loadingIndicator get() = page.sharedLoadingIndicator
+    private val toolbar get() = page.sharedToolbar
 
     private val binding by viewBinding(FragmentLogsBinding::bind)
     private val adapter by lazy { StatAdapter {
