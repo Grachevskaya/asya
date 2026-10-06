@@ -24,14 +24,6 @@
             android:layout_height="wrap_content">
 
             <include
-                android:id="@+id/about_fork_description"
-                layout="@layout/fragment_about_text_section" />
-
-            <Space
-                android:layout_width="match_parent"
-                android:layout_height="16dp" />
-
-            <include
                 android:id="@+id/about_description"
                 layout="@layout/fragment_about_text_section" />
 
@@ -61,42 +53,46 @@
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/list_developer"
+                android:id="@+id/list_people"
                 android:orientation="vertical"
                 android:background="@drawable/about_content_bg"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
                 <LinearLayout
-                    android:id="@+id/list_hma_oss"
+                    android:id="@+id/list_asya"
                     android:orientation="vertical"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 
                 <LinearLayout
-                    android:id="@+id/list_hma"
-                    android:visibility="gone"
+                    android:id="@+id/list_tosya"
                     android:orientation="vertical"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 
+                <LinearLayout
+                    android:id="@+id/list_developer"
+                    android:visibility="gone"
+                    android:orientation="vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <LinearLayout
+                        android:id="@+id/list_hma_oss"
+                        android:orientation="vertical"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <LinearLayout
+                        android:id="@+id/list_hma"
+                        android:orientation="vertical"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
             </LinearLayout>
-
-            <TextView
-                android:layout_marginVertical="16dp"
-                android:text="@string/about_translator"
-                android:textStyle="bold"
-                android:textColor="?colorPrimary"
-                android:paddingHorizontal="@dimen/item_padding_vertical"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <LinearLayout
-                android:id="@+id/list_translator"
-                android:orientation="vertical"
-                android:background="@drawable/about_content_bg"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
 
             <TextView
                 android:layout_marginVertical="16dp"

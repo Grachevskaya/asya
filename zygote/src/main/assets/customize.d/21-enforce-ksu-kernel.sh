@@ -9,16 +9,16 @@ if [ "$KSU" ]; then
     [ -z "$SYSTEM_LANG" ] && SYSTEM_LANG=$(settings get system system_locales 2>/dev/null)
 
     # default language
-    KSU_VERSION_MISMATCH_WARN="! KernelSU manager version ($KSU_VER_CODE) does not match kernel driver version ($KSU_KERNEL_VER_CODE). HMA-OSS will not take any responsibilities for incompatibilities!"
+    KSU_VERSION_MISMATCH_WARN="! KernelSU manager version ($KSU_VER_CODE) does not match kernel driver version ($KSU_KERNEL_VER_CODE). asya will not take any responsibilities for incompatibilities!"
     INSTALLER_CONTINUE_MSG(){
         echo "- The installer will continue in $1 seconds"
     }
 
     # language pack
     if echo "$SYSTEM_LANG" | grep -q "zh"; then
-        KSU_VERSION_MISMATCH_WARN="! 警告: KernelSU 管理器版本 ($KSU_VER_CODE) 与驱动版本 ($KSU_KERNEL_VER_CODE) 不匹配! HMA-OSS 不对由此引发的系统异常负责，且模块可能无法激活!"
+        KSU_VERSION_MISMATCH_WARN="! Warning: the KernelSU manager ($KSU_VER_CODE) and the driver ($KSU_KERNEL_VER_CODE) do not match; asya is not responsible for what that causes, and the module may not activate"
         INSTALLER_CONTINUE_MSG(){
-            echo "- 安装将在 $1 秒后继续"
+            echo "- Installation continues in $1 second(s)"
         }
     fi
 

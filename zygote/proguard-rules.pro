@@ -20,5 +20,6 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
--keep class org.frknkrc44.hma_oss.zygote.ZygoteEntry { premain(); main(); }
+-keep class io.github.grachevskaya.asya.zygote.ZygoteEntry { premain(); main(); }
 -dontwarn com.v7878.r8.annotations.KeepCodeAttribute
+-dontwarn com.v7878.r8.annotations.KeepCode

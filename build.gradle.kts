@@ -26,12 +26,6 @@ val ciBuild = providers.environmentVariable("CI").isPresent
 val officialBuild = localProperties.getProperty("officialBuild", "false") == "true"
 extra["officialBuild"] = officialBuild
 
-val crowdinProjectId: String = localProperties.getProperty("crowdinProjectId", "")
-extra["crowdinProjectId"] = crowdinProjectId
-
-val crowdinApiKey: String = localProperties.getProperty("crowdinApiKey", "")
-extra["crowdinApiKey"] = crowdinApiKey
-
 fun getUncommittedSuffix(): String {
     if (officialBuild) return ""
 
@@ -65,14 +59,15 @@ val gitVersionName: String get() {
     val suffix = getUncommittedSuffix()
 
     return suffix.ifEmpty {
-        "oss-$gitCommitCountAfterOss"
+        "$gitCommitCountAfterLicense"
     }
 }
 
-val gitCommitCount = "git rev-list refs/remotes/origin/master --count".execute().toInt()
+// This repository's default branch is main, and a full checkout fetches every branch of it.
+val gitCommitCount = "git rev-list refs/remotes/origin/main --count".execute().toInt()
 
-// 432 is the count of commits before license changed
-val gitCommitCountAfterOss = gitCommitCount - 432
+// 432 is the count of commits before the license changed
+val gitCommitCountAfterLicense = gitCommitCount - 432
 
 val minSdkVer = 29
 extra["minSdkVer"] = minSdkVer
@@ -82,7 +77,7 @@ extra["targetSdkVer"] = targetSdkVer
 val minorSdkVer = 2
 extra["minorSdkVer"] = minorSdkVer
 
-val appVerCode = gitCommitCount + 0x6f7373 // commit count + 0xOSS
+val appVerCode = gitCommitCount + 0x6f7373 // the commit count over this lineage's fixed base
 extra["appVerCode"] = appVerCode
 val appVerName = gitVersionName
 extra["appVerName"] = appVerName
@@ -102,7 +97,7 @@ extra["serviceVerCode"] = serviceVerCode
 val minBackupVerCode = 65
 extra["minBackupVerCode"] = minBackupVerCode
 
-val appPackageName = "org.frknkrc44.hma_oss"
+val appPackageName = "io.github.grachevskaya.asya"
 extra["appPackageName"] = appPackageName
 
 val localBuild = localProperties.getProperty("localBuild", "false") == "true"

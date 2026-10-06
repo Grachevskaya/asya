@@ -13,15 +13,15 @@ ZYGISK_DETECTED_MSG(){
 }
 FALLBACK_ZYGISK_NAME="Zygisk"
 ZYGISK_MULTI_ERR="! Multiple Zygisk frameworks were found. Aborting installation to prevent conflicts"
-ZYGISK_NOT_FOUND_ERR="! No known Zygisk frameworks (e.g. ZygiskNext) is found, HMA-OSS requires Zygisk to work. Installation aborted"
+ZYGISK_NOT_FOUND_ERR="! No known Zygisk frameworks (e.g. ZygiskNext) is found, asya requires Zygisk to work. Installation aborted"
 
 # language pack
 if echo "$SYSTEM_LANG" | grep -q "zh"; then
     ZYGISK_DETECTED_MSG(){
-        ui_print "- 检测到 $1 框架"
+        ui_print "- Detected framework: $1"
     }
-    ZYGISK_MULTI_ERR="! 检测到多个 Zygisk 框架, 为了避免冲突, 安装程序已退出"
-    ZYGISK_NOT_FOUND_ERR="! 未找到已知的 Zygisk 框架 (例如 ZygiskNext), HMA-OSS 需要 Zygisk 才能正常运行, 安装程序已退出"
+    ZYGISK_MULTI_ERR="! More than one Zygisk framework found; the installer stopped to avoid a conflict"
+    ZYGISK_NOT_FOUND_ERR="! No known Zygisk framework (such as ZygiskNext) was found; asya needs Zygisk to run, so the installer stopped"
 fi
 
 for folder in /data/adb/modules/* /data/adb/modules_update/*

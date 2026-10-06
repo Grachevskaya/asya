@@ -12,13 +12,6 @@
             android:title="@string/app_enable_hide" />
     </PreferenceCategory>
 
-    <Preference
-        app:widgetLayout="@layout/preference_sub_menu_indicator"
-        android:dependency="enableHide"
-        android:key="spoofing"
-        android:icon="@drawable/outline_shop_24"
-        android:title="@string/app_spoof" />
-
     <PreferenceCategory
         android:dependency="enableHide"
         android:title="@string/preferences">
@@ -33,11 +26,6 @@
             app:singleLineTitle="false"
             android:title="@string/app_invert_activity_launch_protection"
             android:summary="@string/app_invert_activity_launch_protection_desc" />
-        <Preference
-            android:icon="@drawable/syringe_24px"
-            android:key="restrictZygotePermissions"
-            android:title="@string/app_restrict_zygote_permissions"
-            android:summary="@string/app_restrict_zygote_permissions_desc" />
     </PreferenceCategory>
 
     <PreferenceCategory

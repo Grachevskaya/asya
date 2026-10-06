@@ -81,7 +81,6 @@ lint/tmp/
 *.hprof
 
 updates/
-translators.json
 
 .kotlin/
 xposed/

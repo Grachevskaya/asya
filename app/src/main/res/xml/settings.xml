@@ -8,11 +8,6 @@
             android:key="language"
             android:summary="%s"
             android:title="@string/settings_language" />
-        <Preference
-            android:icon="@drawable/outline_translate_24"
-            android:key="translation"
-            app:singleLineTitle="false"
-            android:title="@string/settings_translate" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/settings_theme">
@@ -43,18 +38,6 @@
             app:singleLineTitle="false"
             android:title="@string/dark_theme" />
         <SwitchPreferenceCompat
-            android:icon="@drawable/baseline_wallpaper_24"
-            android:key="systemWallpaper"
-            app:singleLineTitle="false"
-            android:title="@string/settings_system_wallpaper" />
-        <SeekBarPreference
-            android:key="systemWallpaperAlpha"
-            android:dependency="systemWallpaper"
-            app:updatesContinuously="true"
-            app:min="0x11"
-            android:max="0xCC"
-            android:defaultValue="0xAA" />
-        <SwitchPreferenceCompat
             android:icon="@drawable/outline_invert_colors_24"
             android:key="blackDarkTheme"
             android:summary="@string/settings_pure_black_dark_theme_summary"
@@ -66,7 +49,7 @@
             android:summary="@string/settings_hide_icon_summary"
             app:singleLineTitle="false"
             android:title="@string/settings_hide_icon" />
-        <org.frknkrc44.hma_oss.ui.preference.AppIconPreference
+        <io.github.grachevskaya.asya.ui.preference.AppIconPreference
             android:key="launcherIcon"
             android:title="@string/settings_launcher_icon" />
     </PreferenceCategory>
@@ -96,12 +79,6 @@
             app:singleLineTitle="false"
             android:title="@string/settings_webview_protection"
             android:summary="@string/settings_webview_protection_summary" />
-        <MultiSelectListPreference
-            android:icon="@drawable/syringe_24px"
-            android:key="disableHooks"
-            app:singleLineTitle="false"
-            android:title="@string/settings_disable_hooks"
-            android:summary="@string/settings_disable_hooks_summary" />
         <Preference
             app:widgetLayout="@layout/preference_sub_menu_indicator"
             android:icon="@drawable/outline_storage_24"

@@ -5,6 +5,6 @@
 }
 
 -keep,allowoptimization class * extends androidx.preference.PreferenceFragmentCompat
--keepclassmembers class org.frknkrc44.hma_oss.databinding.**  {
+-keepclassmembers class io.github.grachevskaya.asya.databinding.**  {
     public <methods>;
 }

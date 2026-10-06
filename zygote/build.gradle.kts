@@ -1,6 +1,7 @@
 import com.android.ide.common.signing.KeystoreHelper
 import com.v7878.zygisk.gradle.ZygoteLoader
 import java.util.Locale
+import java.util.Properties
 import kotlin.io.path.Path
 
 plugins {
@@ -83,13 +84,13 @@ abstract class GenerateSignInfoTask : DefaultTask() {
             keyAlias.orNull,
         )
 
-        val outSrc = outputDir.get().file("org/frknkrc44/hma_oss/zygote/Magic.java").asFile
+        val outSrc = outputDir.get().file("io/github/grachevskaya/asya/zygote/Magic.java").asFile
         outSrc.parentFile.mkdirs()
 
         val bytes = certificateInfo.certificate.encoded
         outSrc.writeText(
             buildString {
-                appendLine("package org.frknkrc44.hma_oss.zygote;")
+                appendLine("package io.github.grachevskaya.asya.zygote;")
                 appendLine("public final class Magic {")
                 appendLine("public static final byte[] magicNumbers = {")
                 appendLine(bytes.joinToString(",") { it.toString() })
@@ -139,17 +140,16 @@ androidComponents {
 
 zygisk {
     // inject to system_server
-    packages(ZygoteLoader.PACKAGE_SYSTEM_SERVER)
+    // SystemUI is the host: it is always running, so the secret code always has someone to answer it.
+    packages(ZygoteLoader.PACKAGE_SYSTEM_SERVER, "com.android.systemui")
 
     // module properties
     id = "hma_oss_zygisk"
     name = "HMA-OSS Zygisk"
     author = "frknkrc44"
     description = "A Zygisk backend for HMA-OSS"
-    entrypoint = "org.frknkrc44.hma_oss.zygote.ZygoteEntry"
-    archiveName = "${rootProject.name}-ZYGISK-${android.defaultConfig.versionName}"
-    updateJson = "https://furkank.net/hma_oss_update_checker.json"
-    isAddVariantToArchiveName = true
+    entrypoint = "io.github.grachevskaya.asya.zygote.ZygoteEntry"
+    archiveName = "${rootProject.name}-${android.defaultConfig.versionName}"
 }
 
 dependencies {
@@ -164,4 +164,28 @@ dependencies {
     api(androidvmtools.panama.llvm)
 
     implementation(androidvmtools.sun.cleaner)
+}
+
+/*
+ * The annotations in com.v7878.r8.annotations are compile-time only, and two dependencies bring
+ * them under two different coordinates: the loader's runtime brings the old group, the PanamaPort
+ * artifacts bring the new one. One of the two has to go, and the old group is the one nobody is
+ * publishing any more.
+ */
+/*
+ * One copy of the annotations, and it is the older coordinate.
+ *
+ * Two dependencies bring the same classes under two groups -- the loader's runtime brings
+ * com.github.vova7878, the PanamaPort artifacts bring io.github.vova7878 -- and because they carry
+ * the same module name Gradle treats them as one module and keeps the higher version, which is the
+ * one that does *not* have all of the annotations: DoNotShrink is in the older artifact and not in
+ * the newer one. So the newer coordinate is excluded everywhere, the older one is declared for
+ * compilation, and the runtime gets it from the loader.
+ */
+configurations.all {
+    exclude(group = "io.github.vova7878", module = "R8Annotations")
+}
+
+dependencies {
+    compileOnly("com.github.vova7878:R8Annotations:v0.0.2")
 }

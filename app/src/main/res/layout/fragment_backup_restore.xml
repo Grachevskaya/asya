@@ -52,7 +52,7 @@
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
-        <icu.nullptr.hidemyapplist.ui.view.ListItemView
+        <io.github.grachevskaya.asya.ui.view.ListItemView
             android:id="@+id/manage_apps"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -72,7 +72,7 @@
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
-        <icu.nullptr.hidemyapplist.ui.view.ListItemView
+        <io.github.grachevskaya.asya.ui.view.ListItemView
             android:id="@+id/template_list"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -92,7 +92,7 @@
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
-        <icu.nullptr.hidemyapplist.ui.view.ListItemView
+        <io.github.grachevskaya.asya.ui.view.ListItemView
             android:id="@+id/settings_template_list"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

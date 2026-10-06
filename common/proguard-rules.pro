@@ -25,6 +25,6 @@
 # @Serializable and @Polymorphic are used at runtime for polymorphic serialization.
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault
 
--keep class icu.nullptr.hidemyapplist.common.** { *; }
+-keep class io.github.grachevskaya.asya.common.** { *; }
 -dontwarn android.**
 -dontwarn com.android.**

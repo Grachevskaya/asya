@@ -36,6 +36,7 @@
                 android:id="@+id/status_card"
                 layout="@layout/view_status_card" />
 
+
             <LinearLayout
                 android:divider="@drawable/divider"
                 android:showDividers="middle"
@@ -53,14 +54,6 @@
 
                 <include
                     android:id="@+id/manage_templates"
-                    layout="@layout/view_home_item" />
-
-                <include
-                    android:id="@+id/manage_presets"
-                    layout="@layout/view_home_item" />
-
-                <include
-                    android:id="@+id/nav_bulk_config_wizard"
                     layout="@layout/view_home_item" />
 
                 <include

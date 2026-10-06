@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "org.frknkrc44.stub"
+    namespace = "io.github.grachevskaya.asya.stub"
 }
 
 dependencies {
