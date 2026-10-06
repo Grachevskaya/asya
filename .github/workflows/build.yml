@@ -1,0 +1,269 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# One job per kernel family, in parallel, each inside the image that family is built in. The chat is
+# the only transport and it is one message: `reserve` opens an album of nine files -- eight ko slots
+# and the package slot -- every build job replaces its own slot and publishes the file id it got back
+# as its own job output (file_id1 .. file_id8, one key each, so nothing collides), and `pack` collects
+# those eight ids, downloads the ko files, builds the manager and the package, and writes the package
+# into the ninth slot, which `reserve` names in its own output.
+#
+# No artifacts, no repository variables, no deletions, no pins.
+
+permissions:
+  contents: read
+
+jobs:
+  # Opens the one message a release lives in: nine placeholder files, the last one carrying the text.
+  reserve:
+    name: reserve the album
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      message_id: ${{ steps.reserve.outputs.message_id }}
+      slot9_id: ${{ steps.reserve.outputs.slot9_id }}
+      version: ${{ steps.reserve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Reserve the album
+        id: reserve
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          version="${{ github.ref_name }}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [ -z "${BOT_TOKEN:-}" ] || [ -z "${CHAT_ID:-}" ]; then
+            echo 'no Telegram secrets here; nothing sent'
+            echo 'message_id=0' >> "$GITHUB_OUTPUT"
+            echo 'slot9_id=0' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          work="$RUNNER_TEMP/album"; mkdir -p "$work"
+          slots=(android12-5.10 android13-5.10 android13-5.15 android14-5.15 android14-6.1 android15-6.6 android16-6.12 android17-6.18)
+          media='['; args=(); i=1
+          for k in "${slots[@]}"; do
+            printf 'placeholder %s\n' "$k" > "$work/f$i"
+            # No caption on the ko slots: the files sit next to each other with nothing between them.
+            media="$media$(jq -nc --arg m "attach://f$i" '{type:"document",media:$m}'),"
+            args+=(-F "f$i=@$work/f$i")
+            i=$((i + 1))
+          done
+          printf 'placeholder package\n' > "$work/f9"
+          note="asya ${version} | commit ${{ github.sha }}"
+          media="$media$(jq -nc --arg m "attach://f9" --arg c "$note" '{type:"document",media:$m,caption:$c}')]"
+          args+=(-F "f9=@$work/f9")
+          response=$(curl -sS --fail-with-body \
+            -F "chat_id=${CHAT_ID}" \
+            -F 'disable_notification=true' \
+            -F "media=${media}" \
+            "${args[@]}" \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMediaGroup")
+          ids=$(printf '%s' "$response" \
+            | jq -r '[.result[].message_id] | join(" ")')
+          first=${ids%% *}
+          slot9=${ids##* }
+          echo "message_id=${first}" >> "$GITHUB_OUTPUT"
+          echo "slot9_id=${slot9}" >> "$GITHUB_OUTPUT"
+          echo "reserved message ${first} (nine slots: ${ids})"
+
+  ko:
+    name: tosya.ko (${{ matrix.kmi }})
+    runs-on: ubuntu-latest
+    needs: reserve
+    # Runs for a tag that reserved nothing, where the object is built and goes no further.
+    if: always()
+    # One key per slot: distinct names, so the eight instances of this matrix do not overwrite each
+    # other -- a matrix merges its outputs by key, and only the slot's own job sets its key.
+    outputs:
+      file_id1: ${{ steps.write.outputs.file_id1 }}
+      file_id2: ${{ steps.write.outputs.file_id2 }}
+      file_id3: ${{ steps.write.outputs.file_id3 }}
+      file_id4: ${{ steps.write.outputs.file_id4 }}
+      file_id5: ${{ steps.write.outputs.file_id5 }}
+      file_id6: ${{ steps.write.outputs.file_id6 }}
+      file_id7: ${{ steps.write.outputs.file_id7 }}
+      file_id8: ${{ steps.write.outputs.file_id8 }}
+    container:
+      image: ghcr.io/ylarod/ddk:${{ matrix.kmi }}-20260828
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {kmi: android12-5.10, clang: clang-r416183b, slot: 1}
+          - {kmi: android13-5.10, clang: clang-r450784e, slot: 2}
+          - {kmi: android13-5.15, clang: clang-r450784e, slot: 3}
+          - {kmi: android14-5.15, clang: clang-r487747c, slot: 4}
+          - {kmi: android14-6.1, clang: clang-r487747c, slot: 5}
+          - {kmi: android15-6.6, clang: clang-r510928, slot: 6}
+          - {kmi: android16-6.12, clang: clang-r536225, slot: 7}
+          - {kmi: android17-6.18, clang: clang-r584948c, slot: 8}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.KERNEL_REPO }}
+          token: ${{ github.token }}
+          path: tosya
+          fetch-depth: 0
+          submodules: recursive
+      - name: Build
+        run: |
+          set -euo pipefail
+          [ -n "${{ vars.KERNEL_REPO }}" ] || { echo "set the KERNEL_REPO variable to owner/name"; exit 1; }
+          cd tosya
+          TOSYA_KBUILD_JOBS="$(nproc)" bash scripts/build-kmi.sh \
+            "${{ matrix.kmi }}" "${{ matrix.clang }}" \
+            "$RUNNER_TEMP/stage/${{ matrix.kmi }}" \
+            "$GITHUB_WORKSPACE/out/${{ matrix.kmi }}_arm64_tosya.ko"
+          NM="/opt/ddk/clang/${{ matrix.clang }}/bin/llvm-nm" \
+            bash scripts/check-undefined.sh "$GITHUB_WORKSPACE/out"/*.ko
+      - name: Write this ko into its slot
+        id: write
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SLOT: ${{ matrix.slot }}
+          FIRST: ${{ needs.reserve.outputs.message_id }}
+        run: |
+          set -euo pipefail
+          if [ "${FIRST:-0}" = "0" ]; then
+            echo 'nothing was reserved; the object stays in the runner'
+            exit 0
+          fi
+          # The album was sent in one call, so its members are consecutive: my slot is the reserved
+          # message plus my index. Only this job writes that slot.
+          mid=$((FIRST + SLOT - 1))
+          ko="$GITHUB_WORKSPACE/out/${{ matrix.kmi }}_arm64_tosya.ko"
+          response=$(curl -sS --fail-with-body --retry 3 \
+            -F "chat_id=${CHAT_ID}" \
+            -F "message_id=${mid}" \
+            -F 'media={"type":"document","media":"attach://file","caption":""}' \
+            -F "file=@${ko}" \
+            "https://api.telegram.org/bot${BOT_TOKEN}/editMessageMedia")
+          file_id=$(printf '%s' "$response" | jq -r '.result.document.file_id')
+          # My own key, so the eight of us do not collide in the merged outputs.
+          echo "file_id${SLOT}=${file_id}" >> "$GITHUB_OUTPUT"
+          echo "slot ${SLOT} (message ${mid}) <- $(basename "$ko") as ${file_id}"
+
+  pack:
+    name: pack and write the package
+    runs-on: ubuntu-latest
+    needs: [reserve, ko]
+    if: needs.reserve.result == 'success' && needs.ko.result == 'success'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          # lkmloader is built here, from external/lkmloader.
+          submodules: recursive
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Write key
+        # The signing key is read where this repository carries one; the package still builds without
+        # it, and says so rather than failing halfway.
+        env:
+          KEY_STORE: ${{ secrets.KEY_STORE }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          ALIAS_KEY_PASSWORD: ${{ secrets.ALIAS_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEY_STORE:-}" ]; then
+            echo "no signing key in this repository; the manager is built unsigned"
+            exit 0
+          fi
+          echo officialBuild=true >> local.properties
+          echo storePassword="$KEY_STORE_PASSWORD" >> local.properties
+          echo keyAlias="$ALIAS" >> local.properties
+          echo keyPassword="$ALIAS_KEY_PASSWORD" >> local.properties
+          echo fileDir="$(pwd)"/key.jks >> local.properties
+          printf '%s' "$KEY_STORE" | base64 --decode > key.jks
+      - name: Android NDK
+        # lkmloader is built from the submodule for arm64, so the build needs the NDK this runner
+        # carries; its path is what the gradle build reads.
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+            ndk="$(ls -d "$sdk"/ndk/* 2>/dev/null | sort -V | tail -1 || true)"
+            if [ -z "$ndk" ]; then
+              echo "no NDK on this runner"
+              exit 1
+            fi
+            echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          fi
+          echo "NDK ${ANDROID_NDK_HOME}"
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-
+      - name: Collect the eight ko files by the ids the build jobs published
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p zygote/src/main/assets/ko
+          rm -f zygote/src/main/assets/ko/*.ko
+          slots=(android12-5.10 android13-5.10 android13-5.15 android14-5.15 android14-6.1 android15-6.6 android16-6.12 android17-6.18)
+          ids=("${{ needs.ko.outputs.file_id1 }}" "${{ needs.ko.outputs.file_id2 }}" \
+               "${{ needs.ko.outputs.file_id3 }}" "${{ needs.ko.outputs.file_id4 }}" \
+               "${{ needs.ko.outputs.file_id5 }}" "${{ needs.ko.outputs.file_id6 }}" \
+               "${{ needs.ko.outputs.file_id7 }}" "${{ needs.ko.outputs.file_id8 }}")
+          i=0
+          for kmi in "${slots[@]}"; do
+            file_id=${ids[$i]}
+            if [ -z "$file_id" ]; then
+              echo "slot $((i + 1)) published no file id"
+              exit 1
+            fi
+            path=$(curl -sS --fail-with-body --retry 3 \
+              "https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${file_id}" \
+              | jq -r '.result.file_path')
+            curl -sS --fail-with-body --retry 3 -o "zygote/src/main/assets/ko/${kmi}_arm64_tosya.ko" \
+              "https://api.telegram.org/file/bot${BOT_TOKEN}/${path}"
+            printf '  slot %s %-18s %8s bytes\n' "$((i + 1))" "$kmi" "$(stat -c %s "zygote/src/main/assets/ko/${kmi}_arm64_tosya.ko")"
+            i=$((i + 1))
+          done
+          ls -l zygote/src/main/assets/ko
+      - name: Build the manager and the module
+        id: build
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon prebuild :app:assemble :zygote:assemble
+          echo "zip=$(ls zygote/build/outputs/magisk/release/*.zip)" >> "$GITHUB_OUTPUT"
+      - name: Write the package into the ninth slot
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SLOT9: ${{ needs.reserve.outputs.slot9_id }}
+          VERSION: ${{ needs.reserve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${SLOT9:-0}" = "0" ]; then
+            echo 'nothing was reserved; nothing to write'
+            exit 0
+          fi
+          zip="${{ steps.build.outputs.zip }}"
+          note="asya ${VERSION} | commit ${{ github.sha }}"
+          media=$(jq -nc --arg m 'attach://file' --arg c "$note" '{type:"document",media:$m,caption:$c}')
+          curl -sS --fail-with-body --retry 3 \
+            -F "chat_id=${CHAT_ID}" \
+            -F "message_id=${SLOT9}" \
+            -F "media=${media}" \
+            -F "file=@${zip}" \
+            "https://api.telegram.org/bot${BOT_TOKEN}/editMessageMedia" | head -c 200
+          echo
+          echo "package $(basename "$zip") written into slot 9 (message ${SLOT9})"

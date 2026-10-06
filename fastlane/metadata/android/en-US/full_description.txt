@@ -2,7 +2,7 @@ A FOSS continuation of Hide My Applist project with bunch of new features.
 
 <b>NOTE: The LSPosed module will not be updated anymore, you should consider switching to the Zygisk module instead.</b>
 
-Features of HMA-OSS:
+Features of asya:
 
 * Hide your application list (similar to what Hide My Applist does)
 * Activity launch protection
@@ -19,4 +19,4 @@ Features of HMA-OSS:
 * Redesigned home screen and some other screens
 * Bulk config wizard (apply a config to more than one apps)
 
-For more information, check this wiki page: https://github.com/frknkrc44/HMA-OSS/wiki
+For more information, check this wiki page: https://github.com/Grachevskaya/asya/wiki
