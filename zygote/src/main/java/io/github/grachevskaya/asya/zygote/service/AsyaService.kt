@@ -1139,6 +1139,7 @@ class AsyaService(
         // The bridge: the host's process observer registration is what carries it across.
         frameworkHooks.add(BridgeHook())
 
+
         frameworkHooks.forEach(IFrameworkHook::load)
         logI(TAG) { "Hooks installed" }
     }
@@ -1273,8 +1274,24 @@ class AsyaService(
 
         synchronized(loggerLock) {
             if (!logcatAvailable) return
-            if (logFile.length() / 1024 > config.maxLogSize) clearLogs()
-            logFile.appendText(parsedMsg)
+
+            /*
+             * A log line is never worth a crash, and this runs on a pool thread: an exception here
+             * takes system_server with it. The directory the file lives in is deleted by the
+             * manager's own clean-up -- "Remove system service cache in /data/misc/asya_*" -- and
+             * the service keeps running while it is gone, which is exactly the FileNotFoundException
+             * that was seen in the crash record. One retry rebuilds the file and the directory;
+             * anything after that is swallowed, because there is nowhere left to say it.
+             */
+            runCatching {
+                if (logFile.length() / 1024 > config.maxLogSize) clearLogs()
+                logFile.appendText(parsedMsg)
+            }.onFailure {
+                runCatching {
+                    ensureFileIsRW(logFile, true)
+                    logFile.appendText(parsedMsg)
+                }
+            }
         }
     }
 

@@ -19,8 +19,8 @@
             android:layout_height="wrap_content"
             app:title="@string/title_template_manage"
             app:titleCollapseMode="scale"
-            app:expandedTitleTextAppearance="@style/TextAppearance.Material3.HeadlineMedium"
-            app:collapsedTitleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
+            app:expandedTitleTextAppearance="@style/TextAppearance.Material3.HeadlineMedium.Emphasized"
+            app:collapsedTitleTextAppearance="@style/TextAppearance.Material3.TitleLarge.Emphasized"
             app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
 
             <com.google.android.material.appbar.MaterialToolbar
@@ -45,7 +45,6 @@
             android:layout_marginHorizontal="16dp"
             android:layout_marginTop="12dp"
             android:layout_marginBottom="3dp"
-            android:background="@drawable/row_group_top"
             app:icon="@drawable/baseline_add_24"
             app:text="@string/template_new_blacklist" />
 
@@ -54,7 +53,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:background="@drawable/row_group_bottom"
             app:icon="@drawable/baseline_add_24"
             app:text="@string/template_new_whitelist" />
 

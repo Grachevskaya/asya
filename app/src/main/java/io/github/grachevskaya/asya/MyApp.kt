@@ -30,14 +30,13 @@ class MyApp : Application() {
     fun loadPreferences() {
         AppCompatDelegate.setDefaultNightMode(PrefManager.darkTheme)
 
-        reloadLocale(getLocale())
-    }
-
-    @Suppress("DEPRECATION")
-    fun reloadLocale(locale: Locale) {
-        val config = resources.configuration
-        config.setLocale(locale)
-        resources.updateConfiguration(config, resources.displayMetrics)
+        /*
+         * The language is not applied here. Both ways of doing it -- updateConfiguration on these
+         * resources, and AppCompat application locales -- write the configuration of the process,
+         * and in a hosted manager the process is the host: the host changed language with the
+         * manager. The choice is applied to the manager own context instead, where the resources
+         * of the apk live: MainActivity.getLocaleAppliedContext and HostContext.
+         */
     }
 
     override fun onCreate() {

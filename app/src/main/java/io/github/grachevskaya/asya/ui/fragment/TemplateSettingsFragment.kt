@@ -1,13 +1,19 @@
 package io.github.grachevskaya.asya.ui.fragment
 
+import android.animation.ValueAnimator
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.clearFragmentResultListener
 import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.setFragmentResultListener
+import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.navArgs
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -18,10 +24,15 @@ import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.ui.util.navController
 import io.github.grachevskaya.asya.ui.util.navigate
 import io.github.grachevskaya.asya.ui.util.registerOnBackCallback
+import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 import io.github.grachevskaya.asya.ui.util.setupToolbar
 import io.github.grachevskaya.asya.ui.viewmodel.TemplateSettingsViewModel
 import kotlinx.coroutines.launch
+
+/** The size the name is read at, and the size it is written at: the one growth of this page. */
+private const val NAME_READING = 22f
+private const val NAME_WRITING = 32f
 
 class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
     private val binding by viewBinding(FragmentTemplateSettingsBinding::bind)
@@ -37,7 +48,11 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
                 (ConfigManager.hasTemplate(viewModel.name) || viewModel.name == null)
         if (nameTaken || delete) {
             val builder =
-                MaterialAlertDialogBuilder(requireContext())
+                MaterialAlertDialogBuilder(
+                    requireContext(),
+                    R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
+                )
+                    .setIcon(if (delete) R.drawable.outline_delete_24 else R.drawable.outline_info_24)
                     .setTitle(if (delete) R.string.template_delete_title else R.string.template_name_invalid)
                     .setMessage(if (delete) R.string.template_delete else R.string.template_name_already_exist)
                     .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -50,6 +65,62 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
         }
     }
 
+    /*
+     * Touching the name makes it the largest thing on the page: the line grows into the size it is
+     * written at, the rule under it draws in from its start, and the pencil steps aside, all for the
+     * same length of time. Leaving the name takes the three of them back together.
+     */
+    private fun swapNameSizes(writing: Boolean) {
+        val duration = 220L
+        val easing = FastOutSlowInInterpolator()
+
+        // The size is animated in sp rather than through an ObjectAnimator: its getter reads the
+        // size in pixels, so a first frame taken from it would set the name to that many sp.
+        val from = binding.templateName.textSize / resources.displayMetrics.scaledDensity
+        ValueAnimator.ofFloat(from, if (writing) NAME_WRITING else NAME_READING).apply {
+            this.duration = duration
+            interpolator = easing
+            addUpdateListener { binding.templateName.setTextSize(TypedValue.COMPLEX_UNIT_SP, it.animatedValue as Float) }
+            start()
+        }
+
+        binding.templateNameRule
+            .animate()
+            .scaleX(if (writing) 1f else 0f)
+            .alpha(if (writing) 1f else 0f)
+            .setDuration(duration)
+            .setInterpolator(easing)
+            .start()
+
+        binding.templateNameEdit
+            .animate()
+            .alpha(if (writing) 0f else 1f)
+            .setDuration(duration)
+            .setInterpolator(easing)
+            .start()
+
+        binding.templateName.isCursorVisible = writing
+    }
+
+    private fun focusName() {
+        binding.templateName.requestFocus()
+        binding.templateName.setSelection(binding.templateName.text?.length ?: 0)
+        val ime = requireContext().getSystemService(InputMethodManager::class.java)
+        ime?.showSoftInput(binding.templateName, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun hideKeyboard() {
+        val ime = requireContext().getSystemService(InputMethodManager::class.java)
+        ime?.hideSoftInputFromWindow(binding.templateName.windowToken, 0)
+        binding.templateName.clearFocus()
+    }
+
+    /*
+     * The name is a title until it is touched and a field once it is, and the transform carries the
+     * one surface into the other: same place, same size growing, the color of the page turning into
+     * the color of the field on the way. Two views take turns, but the page reads as one thing
+     * changing its mind about being read.
+     */
     private fun saveResult(delete: Boolean) {
         setFragmentResult(
             "template_settings",
@@ -81,7 +152,27 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
 
         binding.templateName.setText(viewModel.name)
         binding.workMode.setText(if (viewModel.isWhiteList) R.string.whitelist else R.string.blacklist)
+        binding.templateName.setOnFocusChangeListener { _, focused -> swapNameSizes(focused) }
+        binding.templateName.setOnEditorActionListener { _, _, _ ->
+            hideKeyboard()
+            true
+        }
         binding.templateName.addTextChangedListener { viewModel.name = it.toString() }
+
+        // Anywhere on the name, and the pencil, put the caret in the line.
+        binding.nameArea.setOnClickListener { focusName() }
+        binding.templateNameEdit.setOnClickListener { focusName() }
+
+        // Touching the page away from the name gives the sizes back.
+        binding.templateContent.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) activity?.currentFocus?.clearFocus()
+            false
+        }
+
+        swapNameSizes(false)
+
+        // The rows of the page are one group, the way the home and about screens group theirs.
+        binding.rows.styleSegmentedCards(requireContext())
         binding.targetApps.setOnClickListener {
             setFragmentResultListener("app_select") { _, bundle ->
                 viewModel.targetAppList.value = bundle.getStringArrayList("checked")!!

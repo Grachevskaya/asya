@@ -34,8 +34,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/title_settings"
-            android:thumb="@drawable/switch_thumb"
-            android:track="@drawable/switch_track"
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
@@ -47,8 +45,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/settings_clear_uninstalled_app_configs"
-            android:thumb="@drawable/switch_thumb"
-            android:track="@drawable/switch_track"
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
@@ -67,8 +63,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/settings_overwrite"
-            android:thumb="@drawable/switch_thumb"
-            android:track="@drawable/switch_track"
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
@@ -87,8 +81,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/settings_overwrite"
-            android:thumb="@drawable/switch_thumb"
-            android:track="@drawable/switch_track"
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 

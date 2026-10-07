@@ -22,7 +22,7 @@
         android:minWidth="20dp"
         android:paddingHorizontal="6dp"
         android:paddingVertical="2dp"
-        android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+        android:textAppearance="@style/TextAppearance.Material3.LabelMedium.Emphasized"
         android:textColor="?attr/colorOnSurfaceVariant"
         tools:text="I" />
 
@@ -38,7 +38,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
-            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall.Emphasized"
             android:textColor="?attr/colorOnSurface"
             tools:text="Asya-Bridge" />
 

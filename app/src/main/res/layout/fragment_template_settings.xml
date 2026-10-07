@@ -18,63 +18,159 @@
             android:layout_width="match_parent"
             android:layout_height="?actionBarSize"
             android:elevation="0dp" />
-</com.google.android.material.appbar.AppBarLayout>
+    </com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
+        android:id="@+id/template_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:paddingHorizontal="@dimen/item_padding_vertical"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginVertical="10dp"
-            android:hint="@string/template_name"
-            android:paddingHorizontal="@dimen/item_padding_horizontal"
-            android:transitionName="transition_manage"
-            app:startIconDrawable="@drawable/outline_edit_24">
+        <!--
+          The name of the template.
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/template_name"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-</com.google.android.material.textfield.TextInputLayout>
-
+          There is no box around it. A field drawn as a container says "here is a control"; this page
+          has one thing to name, and the name is worth the width of the screen: a caption saying what
+          it is, the name itself in the type a name deserves, and a rule that draws in from its start
+          while the name is being written. The pencil says the line can be touched without a box
+          having to say it, and the rule says the same thing while the caret is in it.
+        -->
         <LinearLayout
+            android:id="@+id/name_area"
             android:orientation="vertical"
-            android:paddingHorizontal="@dimen/item_padding_horizontal"
-            android:minHeight="?listPreferredItemHeight"
-            android:gravity="center_vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginBottom="@dimen/item_padding_vertical"
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
             <TextView
-                android:textAppearance="?textAppearanceBodyLarge"
-                android:text="@string/work_mode"
-                android:layout_marginEnd="8dp"
-                android:layout_width="wrap_content"
+                android:text="@string/template_name"
+                android:textAppearance="@style/TextAppearance.Material3.LabelMedium.Emphasized"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
 
-            <TextView
-                android:textAppearance="?textAppearanceBodyMedium"
-                android:id="@+id/work_mode"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-</LinearLayout>
+            <LinearLayout
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="@dimen/item_padding_mini"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
 
-        <io.github.grachevskaya.asya.ui.view.ListItemView
-            android:id="@+id/target_apps"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:buttonText="@string/edit_list"
-            app:icon="@drawable/baseline_apps_24" />
+                <androidx.appcompat.widget.AppCompatEditText
+                    android:id="@+id/template_name"
+                    android:hint="@string/template_name_write"
+                    android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall"
+                    android:textSize="22sp"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textColorHint="?attr/colorOnSurfaceVariant"
+                    android:background="@null"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:imeOptions="actionDone"
+                    android:paddingVertical="0dp"
+                    android:paddingStart="0dp"
+                    android:paddingEnd="0dp"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content" />
 
-        <io.github.grachevskaya.asya.ui.view.ListItemView
-            android:id="@+id/applied_apps"
+                <ImageView
+                    android:id="@+id/template_name_edit"
+                    android:src="@drawable/outline_edit_24"
+                    app:tint="?attr/colorPrimary"
+                    android:importantForAccessibility="no"
+                    android:layout_marginStart="@dimen/item_padding_mini"
+                    android:layout_width="@dimen/vector_icon_size"
+                    android:layout_height="@dimen/vector_icon_size" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/template_name_rule"
+                android:background="?attr/colorPrimary"
+                android:transformPivotX="0dp"
+                android:scaleX="0"
+                android:alpha="0"
+                android:layout_marginTop="@dimen/item_padding_mini"
+                android:layout_width="match_parent"
+                android:layout_height="2dp" />
+        </LinearLayout>
+
+        <!-- One group: where the mode stands, and the two lists it applies to. -->
+        <LinearLayout
+            android:id="@+id/rows"
+            android:orientation="vertical"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:buttonText="@string/edit_list"
-            app:icon="@drawable/outline_android_24" />
-</LinearLayout>
+            android:layout_height="wrap_content">
+
+            <com.google.android.material.card.MaterialCardView
+                app:cardCornerRadius="4dp"
+                app:cardBackgroundColor="?attr/colorSurfaceBright"
+                app:strokeColor="@null"
+                app:strokeWidth="0dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:orientation="vertical"
+                    android:paddingHorizontal="@dimen/item_padding_horizontal"
+                    android:paddingVertical="@dimen/item_padding_mini"
+                    android:minHeight="?listPreferredItemHeight"
+                    android:gravity="center_vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        android:textAppearance="?textAppearanceBodyLarge"
+                        android:text="@string/work_mode"
+                        android:layout_marginEnd="8dp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                    <TextView
+                        android:textAppearance="?textAppearanceBodyMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:id="@+id/work_mode"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                app:cardCornerRadius="4dp"
+                app:cardBackgroundColor="?attr/colorSurfaceBright"
+                app:strokeColor="@null"
+                app:strokeWidth="0dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <io.github.grachevskaya.asya.ui.view.ListItemView
+                    android:id="@+id/target_apps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:buttonText="@string/edit_list"
+                    app:icon="@drawable/baseline_apps_24" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                app:cardCornerRadius="4dp"
+                app:cardBackgroundColor="?attr/colorSurfaceBright"
+                app:strokeColor="@null"
+                app:strokeWidth="0dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <io.github.grachevskaya.asya.ui.view.ListItemView
+                    android:id="@+id/applied_apps"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:buttonText="@string/edit_list"
+                    app:icon="@drawable/outline_android_24" />
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

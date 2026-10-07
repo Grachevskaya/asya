@@ -367,6 +367,75 @@ public final class HostProcess {
      * and this only needs one of them -- the module replaces it in newActivity before it can draw. The
      * first enabled one the package manager lists is as good as any other.
      */
+    /**
+     * What the manager says it is, instead of the borrowed activity own answer.
+     *
+     * The activity the manager is shown through is a host activity, and its ActivityInfo is the host
+     * one: its configuration changes, its label, its soft input mode. Everything the client decides
+     * from that info was therefore decided by which host activity the package manager happened to
+     * list first. This replaces those fields with the manager own, before the activity is created,
+     * and nothing is added anywhere: the info lives in this process only, and the package manager
+     * is never asked about it.
+     */
+    static void adoptManagerActivityInfo(android.app.Activity activity) {
+        try {
+            android.content.pm.ActivityInfo info = activityInfoOf(activity);
+            if (info == null) return;
+
+            info.configChanges = MANAGER_CONFIG_CHANGES;
+            info.nonLocalizedLabel = MANAGER_LABEL;
+        } catch (Throwable cause) {
+            HostLog.e(cause, "Could not adopt the manager activity info");
+        }
+    }
+
+    /**
+     * The changes the manager handles itself, the same set its own manifest declares.
+     *
+     * Written as the values themselves because the stubs this module compiles against do not carry
+     * these constants: mcc, mnc, locale, touchscreen, keyboard, keyboardHidden, navigation,
+     * orientation, screenLayout, uiMode, screenSize, smallestScreenSize, density, layoutDirection,
+     * colorMode, fontScale and assetsPaths, in that order of the numbers below.
+     */
+    private static final int MANAGER_CONFIG_CHANGES =
+            0x0001 | 0x0002 | 0x0004 | 0x0008 | 0x0010 | 0x0020 | 0x0040 | 0x0080
+                    | 0x0100 | 0x0200 | 0x0400 | 0x0800 | 0x1000 | 0x2000 | 0x4000
+                    | 0x40000000 | 0x80000000;
+
+    /** The hidden field the activity carries its own info in, read the way the module reads hidden things. */
+    private static android.content.pm.ActivityInfo activityInfoOf(android.app.Activity activity) {
+        try {
+            java.lang.reflect.Field field =
+                    com.v7878.unsafe.Reflection.getDeclaredField(
+                            android.app.Activity.class, "mActivityInfo");
+            field.setAccessible(true);
+            return (android.content.pm.ActivityInfo) field.get(activity);
+        } catch (Throwable cause) {
+            HostLog.e(cause, "Could not read the activity info");
+            return null;
+        }
+    }
+
+    private static final CharSequence MANAGER_LABEL = "Asya";
+
+    /**
+     * Whether the manager can be built on this activity.
+     *
+     * The task the manager is shown in is shaped by the activity it borrows: one that is not kept in
+     * the history, or that is launched into a task of its own, is one the manager is shown in and
+     * then taken out of. These are the flags to stay away from; the plain standard activity the host
+     * keeps in its own task is the one wanted, and anything else is only a fallback.
+     */
+    private static boolean isSuitableHostActivity(android.content.pm.ActivityInfo activity) {
+        // ActivityInfo.FLAG_NO_HISTORY (1 << 30) and the excludeFromRecents flag the manifest
+        // parser sets; the launch modes 3 and 2 are singleInstance and singleTask.
+        boolean noHistory = (activity.flags & 0x40000000) != 0;
+        boolean notInRecents = (activity.flags & 0x00800000) != 0;
+        boolean ownTask = activity.launchMode == 3 || activity.launchMode == 2;
+
+        return !noHistory && !notInRecents && !ownTask;
+    }
+
     private static String anyHostActivity(Context context) {
         try {
             android.content.pm.PackageInfo info = context.getPackageManager()
@@ -374,13 +443,17 @@ public final class HostProcess {
                             android.content.pm.PackageManager.GET_ACTIVITIES);
             if (info.activities == null) return null;
 
+            String fallback = null;
             for (android.content.pm.ActivityInfo activity : info.activities) {
-                if (activity.enabled && activity.exported && activity.name != null) {
-                    return activity.name;
-                }
+                if (!activity.enabled || !activity.exported || activity.name == null) continue;
+
+                if (isSuitableHostActivity(activity)) return activity.name;
+                if (fallback == null) fallback = activity.name;
             }
+
+            return fallback;
         } catch (Throwable cause) {
-            HostLog.e(cause, "Could not list the host's activities");
+            HostLog.e(cause, "Could not list the host activities");
         }
 
         return null;

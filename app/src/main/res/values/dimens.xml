@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="card_title_margin_bottom">2dp</dimen>
     <dimen name="info_card_margin_horizontal">12dp</dimen>
     <dimen name="item_padding_horizontal">20dp</dimen>
     <dimen name="item_padding_vertical">16dp</dimen>
@@ -12,4 +11,5 @@
     <dimen name="item_padding_mini">4dp</dimen>
     <dimen name="item_padding_mini2x">8dp</dimen>
     <dimen name="text_margin">16dp</dimen>
+    <dimen name="shape_corner_extra_large">28dp</dimen>
 </resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The list a chooser dialog shows. It is a view we hand the dialog rather than the dialog list,
+    because the library has no list item in the Views library: its own row takes the mark from an
+    attribute this theme chain does not resolve, so a list built from it cannot say what is chosen.
+    The dialog around this is still the library.
+
+    The inset matches the title: a view handed to the dialog gets a smaller one, and without this
+    the boxes stood further left than the words above them.
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:id="@+id/choice_list"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp" />
+</ScrollView>

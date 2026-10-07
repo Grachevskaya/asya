@@ -6,7 +6,6 @@
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
     android:layout_marginVertical="3dp"
-    android:background="@drawable/row_group_single"
     android:clipToOutline="true"
     android:gravity="center_vertical"
     android:orientation="horizontal"
@@ -28,7 +27,7 @@
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="2"
-        android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+        android:textAppearance="@style/TextAppearance.Material3.TitleSmall.Emphasized"
         android:textColor="?attr/colorOnSurface"
         tools:text="Asya-Bridge" />
 
@@ -56,7 +55,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:fontFamily="monospace"
-            android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge.Emphasized"
             android:textColor="?attr/colorOnSurface"
             tools:text="1298" />
     </LinearLayout>
@@ -85,7 +84,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
             android:fontFamily="monospace"
-            android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge.Emphasized"
             android:textColor="?attr/colorOnSurface"
             tools:text="0" />
     </LinearLayout>

@@ -130,6 +130,7 @@ class StatsFragment : Fragment(R.layout.fragment_stats) {
 
             R.id.menu_info -> {
                 MaterialAlertDialogBuilder(requireContext())
+                    .setIcon(R.drawable.outline_info_24)
                     .setTitle(R.string.logs_categories_title)
                     .setMessage(
                         getString(R.string.logs_categories_pkg_mgr) + "\n" +

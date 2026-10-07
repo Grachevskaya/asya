@@ -2,7 +2,6 @@ package io.github.grachevskaya.asya.ui.fragment
 
 import android.content.Intent
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.text.TextUtils
@@ -244,7 +243,11 @@ class SettingsFragment :
                 it.setOnPreferenceChangeListener { _, newValue ->
                     val enabled = newValue as Boolean
                     if (enabled) {
-                        MaterialAlertDialogBuilder(requireContext())
+                        MaterialAlertDialogBuilder(
+                            requireContext(),
+                            R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
+                        )
+                            .setIcon(R.drawable.outline_info_24)
                             .setTitle(R.string.settings_warning)
                             .setMessage(R.string.settings_vold_warning)
                             .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -355,8 +358,11 @@ class SettingsFragment :
                         if (!TextUtils.isEmpty(locale.script)) locale.getDisplayScript(userLocale) else locale.getDisplayName(userLocale)
                 }
                 it.setOnPreferenceChangeListener { _, newValue ->
-                    asyaApp.reloadLocale(getLocale(newValue as String))
-                    recreateMainActivity()
+                    // Rebuilt the way the theme is, and for the same reason: the strings are read
+                    // while views are inflated. prepareRecreate is what keeps that rebuild from being
+                    // a window swap anyone can see -- it remembers the page and suppresses the host
+                    // window transition.
+                    view?.post { (activity as? MainActivity)?.applyLanguageInPlace() }
                     true
                 }
             }
@@ -437,7 +443,11 @@ class SettingsFragment :
 
             findPreference<Preference>("clearUninstalledPackageConfigs")?.apply {
                 setOnPreferenceClickListener {
-                    MaterialAlertDialogBuilder(requireContext())
+                    MaterialAlertDialogBuilder(
+                        requireContext(),
+                        R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
+                    )
+                        .setIcon(R.drawable.outline_cleaning_services_24)
                         .setTitle(R.string.settings_clear_uninstalled_app_configs)
                         .setMessage(R.string.settings_no_undone_warning)
                         .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -486,7 +496,11 @@ class SettingsFragment :
 
             findPreference<Preference>("resetDefault")?.setOnPreferenceClickListener {
                 if (ServiceClient.serviceVersion != 0) {
-                    MaterialAlertDialogBuilder(requireContext())
+                    MaterialAlertDialogBuilder(
+                        requireContext(),
+                        R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
+                    )
+                        .setIcon(R.drawable.outline_cleaning_services_24)
                         .setTitle(R.string.settings_reset_default)
                         .setMessage(R.string.settings_irreversible_confirmation)
                         .setPositiveButton(R.string.yes) { _, _ ->
@@ -501,7 +515,11 @@ class SettingsFragment :
             }
 
             findPreference<Preference>("forceCleanEnv")?.setOnPreferenceClickListener {
-                MaterialAlertDialogBuilder(requireActivity())
+                MaterialAlertDialogBuilder(
+                    requireActivity(),
+                    R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
+                )
+                    .setIcon(R.drawable.outline_cleaning_services_24)
                     .setTitle(R.string.settings_force_clean_env)
                     .setMessage(R.string.settings_is_clean_env_summary)
                     .setPositiveButton(android.R.string.ok) { _, _ ->

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.clearFragmentResultListener
@@ -353,29 +354,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
     class TemplateConfigPreferenceFragment(
         private val preferenceDataStore: PreferenceDataStore,
     ) : BaseAppSettingsPreferenceFragment() {
-        private fun choiceView(
-            names: List<String>,
-            isChecked: (String) -> Boolean,
-        ): Pair<View, List<MaterialCheckBox>> {
-            val root = layoutInflater.inflate(R.layout.dialog_multi_choice, null)
-            val container = root.findViewById<LinearLayout>(R.id.choice_list)
-            val boxes =
-                names.map { name ->
-                    val box =
-                        layoutInflater.inflate(
-                            R.layout.view_multi_choice_row,
-                            container,
-                            false,
-                        ) as MaterialCheckBox
-
-                    box.text = name
-                    box.isChecked = isChecked(name)
-                    container.addView(box)
-                    box
-                }
-            return root to boxes
-        }
-
         private fun updateApplyTemplates() {
             findPreference<Preference>("applyTemplates")?.apply {
                 title = getString(R.string.app_template_using, pack.config.applyTemplates.size)
@@ -454,15 +432,27 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
                         .setNegativeButton(android.R.string.cancel, null)
 
                 if (templates.isNotEmpty()) {
-                    val (view, boxes) =
-                        choiceView(templates) {
-                            pack.config.applyTemplates.contains(it)
+                    val container = layoutInflater.inflate(R.layout.dialog_choose_template, null)
+                    val list = container.findViewById<LinearLayout>(R.id.choice_list)
+                    val boxes =
+                        templates.map { name ->
+                            val row = layoutInflater.inflate(R.layout.dialog_choice_row, list, false)
+                            val label = row.findViewById<TextView>(R.id.row_text)
+                            val box = row.findViewById<MaterialCheckBox>(R.id.row_check)
+
+                            label.text = name
+                            box.isChecked = pack.config.applyTemplates.contains(name)
+                            row.contentDescription = name
+                            row.setOnClickListener { box.toggle() }
+
+                            list.addView(row)
+                            box
+
                         }
-                    dialog.setView(view)
+                    dialog.setView(container)
                     dialog.setPositiveButton(android.R.string.ok) { _, _ ->
                         pack.config.applyTemplates =
-                            templates
-                                .filterIndexedTo(mutableSetOf()) { index, _ -> boxes[index].isChecked }
+                            templates.filterIndexedTo(mutableSetOf()) { index, _ -> boxes[index].isChecked }
                         updateApplyTemplates()
                     }
                 } else {

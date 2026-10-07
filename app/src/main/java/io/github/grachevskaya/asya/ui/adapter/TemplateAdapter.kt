@@ -9,6 +9,7 @@ import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
 import io.github.grachevskaya.asya.ui.util.dpToPx
+import io.github.grachevskaya.asya.ui.util.groupedRowBackground
 import io.github.grachevskaya.asya.ui.view.ListItemView
 import java.text.Collator
 import java.util.Locale
@@ -46,17 +47,7 @@ class TemplateAdapter(
                         context.themeColor(androidx.appcompat.R.attr.colorPrimary),
                     )
 
-                val position = absoluteAdapterPosition
-                background =
-                    ContextCompat.getDrawable(
-                        context,
-                        when {
-                            itemCount <= 1 -> R.drawable.row_group_single
-                            position == 0 -> R.drawable.row_group_top
-                            position == itemCount - 1 -> R.drawable.row_group_bottom
-                            else -> R.drawable.row_group_middle
-                        },
-                    )
+                background = context.groupedRowBackground(absoluteAdapterPosition, itemCount)
             }
         }
     }

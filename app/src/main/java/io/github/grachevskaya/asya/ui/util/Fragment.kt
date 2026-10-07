@@ -94,12 +94,25 @@ val Fragment.contentResolver get(): ContentResolver = requireContext().contentRe
  * the home page from wherever they had been. The screen fades out and the new one fades in, which is
  * what makes the change read as a theme being applied rather than as a page being left.
  */
-fun Fragment.recreateMainActivity(restart: Boolean = false) {
+
+/**
+ * The half of a rebuild that has to come first, whatever starts the rebuild: the page to come
+ * back to, and the flag that keeps the destroy from being read as a request to force stop the app.
+ * A rebuild AppCompat starts on its own -- a language change -- needs both just as much as the one
+ * below, and without the flag the app really did stop and start again.
+ */
+fun Fragment.rememberDestinationForRebuild() {
     val mainActivity = activity as MainActivity
     mainActivity.readyToKill = false
 
     MainActivity.pendingDestination = navController.currentDestination?.id ?: 0
     MainActivity.fadeInOnCreate = true
+}
+
+fun Fragment.recreateMainActivity(restart: Boolean = false) {
+    rememberDestinationForRebuild()
+
+    val mainActivity = activity as MainActivity
 
     if (restart) {
         mainActivity.finish()
@@ -107,12 +120,27 @@ fun Fragment.recreateMainActivity(restart: Boolean = false) {
         return
     }
 
-    val content = mainActivity.findViewById<View>(android.R.id.content) ?: mainActivity.window.decorView
+    fadeOutThen { mainActivity.recreate() }
+}
+
+/**
+ * The cover a rebuild happens behind: the screen fades out and the action runs at its end.
+ *
+ * The fade is not decoration. A relaunch takes a moment in which nothing of this activity is on
+ * screen, and the window behind it -- the host, the launcher -- shows through that moment. It is
+ * also why a rebuild started by something else, AppCompat applying a language, still comes here:
+ * one relaunch, hidden, instead of one that shows the desktop on the way.
+ */
+fun Fragment.fadeOutThen(action: () -> Unit) {
+    val mainActivity = activity as MainActivity
+    val content =
+        mainActivity.findViewById<View>(android.R.id.content) ?: mainActivity.window.decorView
+
     content
         .animate()
         .alpha(0f)
         .setDuration(140L)
-        .withEndAction { mainActivity.recreate() }
+        .withEndAction(action)
         .start()
 }
 

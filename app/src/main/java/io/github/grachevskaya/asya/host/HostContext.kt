@@ -14,12 +14,20 @@ import android.view.ContextThemeWrapper
  *
  * The shape is the one Sui uses for the same problem: a wrapper on the base context that answers
  * getResources, getAssets and getTheme from the loaded apk.
+ *
+ * The theme is optional, and the host side constructs this by reflection: it asks for exactly
+ * (Context, Resources) -- java.lang.Class.getConstructor finds declared constructors, not Kotlin's
+ * default arguments -- and without the overload generated for it that lookup throws, the host
+ * falls back to its own context, and the manager ends up with the host's resources: its own
+ * strings, drawables and theme gone.
  */
-class HostContext(
-    base: android.content.Context,
-    private val hostedResources: Resources,
-    private val hostedTheme: Resources.Theme? = null,
-) : ContextWrapper(base) {
+class HostContext
+    @JvmOverloads
+    constructor(
+        base: android.content.Context,
+        private val hostedResources: Resources,
+        private val hostedTheme: Resources.Theme? = null,
+    ) : ContextWrapper(base) {
 
     override fun getResources(): Resources = hostedResources
 
@@ -43,9 +51,8 @@ class HostContext(
      *
      * LayoutInflater.from(hosted) asks here for the service, and ContextWrapper passes that on to
      * the base -- which is the host -- so the inflater that came back resolved its ids in the host's
-     * table. The first layout the manager inflated died of it: a Resources$NotFoundException naming
-     * a layout of ours, from a table that had never heard of it. Cloning one into this context is
-     * what keeps every lookup in the apk, whichever way the inflater is asked for.
+     * table, so a lookup of an id the manager owns lands in the host's table and throws. Cloning one
+     * into this context keeps every lookup in the apk, whichever way the inflater is asked for.
      */
     override fun getSystemService(name: String): Any? =
         if (name == android.content.Context.LAYOUT_INFLATER_SERVICE) {

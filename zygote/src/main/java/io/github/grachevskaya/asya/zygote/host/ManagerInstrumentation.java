@@ -47,11 +47,16 @@ public class ManagerInstrumentation extends Instrumentation {
 
     @Override
     public void callActivityOnCreate(android.app.Activity p0, android.os.Bundle p1) {
+        // What this activity says it is, before it is created: the info is the borrowed host
+        // activity own until here, and everything the client decides from it -- the configuration
+        // changes it handles itself among them -- would otherwise be the host activity choice.
+        HostProcess.adoptManagerActivityInfo(p0);
         original.callActivityOnCreate(p0, p1);
     }
 
     @Override
     public void callActivityOnCreate(android.app.Activity p0, android.os.Bundle p1, android.os.PersistableBundle p2) {
+        HostProcess.adoptManagerActivityInfo(p0);
         original.callActivityOnCreate(p0, p1, p2);
     }
 

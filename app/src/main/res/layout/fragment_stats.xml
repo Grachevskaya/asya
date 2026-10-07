@@ -12,7 +12,7 @@
         android:layout_height="match_parent"
         android:gravity="center"
         android:text="@string/home_xposed_service_off"
-        android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
+        android:textAppearance="@style/TextAppearance.Material3.TitleLarge.Emphasized"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:visibility="gone" />
 
@@ -22,7 +22,7 @@
         android:layout_height="match_parent"
         android:gravity="center"
         android:text="@string/stats_empty"
-        android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+        android:textAppearance="@style/TextAppearance.Material3.TitleMedium.Emphasized"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:visibility="gone" />
 
@@ -54,7 +54,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/stats_total_title"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelLarge.Emphasized"
                     android:textColor="?attr/colorOnPrimaryContainer" />
 
                 <TextView
@@ -63,7 +63,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:fontFamily="monospace"
-                    android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium"
+                    android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium.Emphasized"
                     android:textColor="?attr/colorOnPrimaryContainer"
                     tools:text="1559" />
 
@@ -98,7 +98,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
-                                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                                android:textAppearance="@style/TextAppearance.Material3.TitleMedium.Emphasized"
                                 android:textColor="?attr/colorOnPrimaryContainer"
                                 tools:text="1559" />
 
@@ -136,7 +136,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="monospace"
-                                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                                android:textAppearance="@style/TextAppearance.Material3.TitleMedium.Emphasized"
                                 android:textColor="?attr/colorOnPrimaryContainer"
                                 tools:text="0" />
 

@@ -87,3 +87,6 @@ xposed/
 
 # ide files
 .vscode/
+# The scratch areas: the rebuild worktree, the artifacts, and whatever pi keeps here
+.scratch/
+.pi/

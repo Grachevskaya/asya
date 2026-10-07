@@ -16,7 +16,11 @@ class AppManageAdapter(
         init {
             view.setOnClickListener {
                 if (!PrefManager.bypassRiskyPackageWarning && Constants.riskyPackages.contains(view.binding.packageName.text)) {
-                    MaterialAlertDialogBuilder(view.context)
+                    MaterialAlertDialogBuilder(
+                        view.context,
+                        R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
+                    )
+                        .setIcon(R.drawable.outline_info_24)
                         .setTitle(R.string.app_warning_risky_package_title)
                         .setMessage(R.string.app_warning_risky_package_desc)
                         .setNegativeButton(android.R.string.cancel, null)

@@ -81,6 +81,7 @@
     <string name="template_new_blacklist">Create a blacklist template</string>
     <string name="template_new_whitelist">Create a whitelist template</string>
     <string name="template_delete">Are you sure to delete the template?</string>
+    <string name="template_name_write">Type a name here</string>
     <string name="template_name">Template name</string>
     <string name="template_name_invalid">Name invalid</string>
     <string name="template_delete_title">Delete Template</string>

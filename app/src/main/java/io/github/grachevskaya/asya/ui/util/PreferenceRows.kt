@@ -2,12 +2,14 @@ package io.github.grachevskaya.asya.ui.util
 
 import android.graphics.Canvas
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
 import android.view.View
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceGroupAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.shape.CornerFamily
+import com.google.android.material.shape.MaterialShapeDrawable
+import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
 
 /**
@@ -24,11 +26,14 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
     val list = listView
     val adapter = list.adapter as? PreferenceGroupAdapter ?: return
     val inset = 16.dpToPx.toInt()
-    val outer = 16.dpToPx
-    val inner = 8.dpToPx
+    val outer = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Large, 16)
+    val inner = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerSmall, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Small, 8)
     val card =
-        GradientDrawable().apply {
-            setColor(themeColor(com.google.android.material.R.attr.colorSurfaceBright))
+        MaterialShapeDrawable().apply {
+            fillColor =
+                android.content.res.ColorStateList.valueOf(
+                    themeColor(com.google.android.material.R.attr.colorSurfaceBright),
+                )
         }
 
     list.setBackgroundColor(themeColor(com.google.android.material.R.attr.colorSurfaceContainer))
@@ -84,7 +89,14 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
                     if (position == RecyclerView.NO_POSITION || isGroupTitle(position)) continue
 
                     val (top, bottom) = edges(position)
-                    card.cornerRadii = floatArrayOf(top, top, top, top, bottom, bottom, bottom, bottom)
+                    card.shapeAppearanceModel =
+                        card.shapeAppearanceModel
+                            .toBuilder()
+                            .setTopLeftCorner(CornerFamily.ROUNDED, top)
+                            .setTopRightCorner(CornerFamily.ROUNDED, top)
+                            .setBottomLeftCorner(CornerFamily.ROUNDED, bottom)
+                            .setBottomRightCorner(CornerFamily.ROUNDED, bottom)
+                            .build()
                     card.setBounds(child.left, child.top, child.right, child.bottom)
                     card.draw(canvas)
                 }
@@ -109,9 +121,16 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
                     themeColor(android.R.attr.colorControlHighlight),
                 ),
                 null,
-                GradientDrawable().apply {
-                    cornerRadii = floatArrayOf(top, top, top, top, bottom, bottom, bottom, bottom)
-                    setColor(android.graphics.Color.WHITE)
+                MaterialShapeDrawable(
+                    card.shapeAppearanceModel
+                        .toBuilder()
+                        .setTopLeftCorner(CornerFamily.ROUNDED, top)
+                        .setTopRightCorner(CornerFamily.ROUNDED, top)
+                        .setBottomLeftCorner(CornerFamily.ROUNDED, bottom)
+                        .setBottomRightCorner(CornerFamily.ROUNDED, bottom)
+                        .build(),
+                ).apply {
+                    fillColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
                 },
             )
     }

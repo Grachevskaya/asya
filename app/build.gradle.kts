@@ -75,6 +75,12 @@ dependencies {
     implementation(projects.common)
 
     implementation(libs.androidx.navigation.fragment.ktx)
+
+    // The fragment and activity the libraries above are written against: what resolved before was
+    // fragment 1.6.2, which predates predictive back entirely, so no amount of navigation support
+    // could have shown a back gesture. 1.9 is where the fragment side of it lives.
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
     implementation(libs.androidx.preference.ktx)
     implementation(libs.androidx.swiperefreshlayout)

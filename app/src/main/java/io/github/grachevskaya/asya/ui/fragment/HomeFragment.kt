@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.card.MaterialCardView
+import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.ShapeAppearanceModel
@@ -33,6 +34,7 @@ import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.StatusRefresh
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
+import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 import io.github.grachevskaya.asya.ui.util.dpToPx
 import io.github.grachevskaya.asya.ui.util.navigate
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
@@ -113,8 +115,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         with(binding.howToUse) {
             text1.text = getString(R.string.home_faq_title)
             icon.setImageResource(R.drawable.baseline_help_outline_24)
+            icon.themedTint(android.R.attr.colorPrimary)
             root.setOnClickListener {
                 MaterialAlertDialogBuilder(requireContext())
+                    .setIcon(R.drawable.outline_info_24)
                     .setTitle(R.string.home_faq_title)
                     .setMessage(
                         getString(R.string.home_faq_create) +
@@ -133,28 +137,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     }
 
-    private fun styleSegmentedRows(rows: List<MaterialCardView>) {
-        val largeRadius = 28.dpToPx
-        val smallRadius = 4.dpToPx
-
-        rows.forEachIndexed { index, card ->
-            val first = index == 0
-            val last = index == rows.lastIndex
-            card.shapeAppearanceModel =
-                ShapeAppearanceModel
-                    .builder()
-                    .setTopLeftCorner(CornerFamily.ROUNDED, if (first) largeRadius else smallRadius)
-                    .setTopRightCorner(CornerFamily.ROUNDED, if (first) largeRadius else smallRadius)
-                    .setBottomLeftCorner(CornerFamily.ROUNDED, if (last) largeRadius else smallRadius)
-                    .setBottomRightCorner(CornerFamily.ROUNDED, if (last) largeRadius else smallRadius)
-                    .build()
-
-            (card.layoutParams as? LinearLayout.LayoutParams)?.apply {
-                topMargin = if (first) 0 else 3.dpToPx.toInt()
-                bottomMargin = if (last) 0 else 3.dpToPx.toInt()
-            }
-        }
-    }
+    private fun styleSegmentedRows(rows: List<MaterialCardView>) = rows.styleSegmentedCards(requireContext())
 
     fun waitForService() {
         var workMode = ServiceClient.managerWorkMode
@@ -191,9 +174,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private fun ViewHalfCardBinding.setState(loaded: Boolean) {
         cardState.text =
             getString(if (loaded) R.string.home_card_loaded else R.string.home_card_not_loaded)
-        cardState.setBackgroundResource(
-            if (loaded) R.drawable.chip_bg_ok else R.drawable.chip_bg_bad,
-        )
+        // The chip carries its own surface and label, instead of a shape drawn beside it.
+        cardState.chipBackgroundColor =
+            ColorStateList.valueOf(
+                themeColor(
+                    if (loaded) {
+                        androidx.appcompat.R.attr.colorPrimary
+                    } else {
+                        androidx.appcompat.R.attr.colorError
+                    },
+                ),
+            )
         cardState.setTextColor(
             themeColor(
                 if (loaded) {

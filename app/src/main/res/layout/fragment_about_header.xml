@@ -26,7 +26,6 @@
 
                 <View
                     android:id="@+id/app_info_top"
-                    android:background="@drawable/about_header_bg_top"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
 
@@ -40,8 +39,8 @@
 
         </RelativeLayout>
 
-        <androidx.cardview.widget.CardView
-            app:cardCornerRadius="24dp"
+        <com.google.android.material.card.MaterialCardView
+            app:cardCornerRadius="@dimen/shape_corner_extra_large"
             android:layout_marginTop="8dp"
             android:layout_marginStart="8dp"
             app:cardElevation="0dp"
@@ -59,12 +58,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
     </RelativeLayout>
 
     <LinearLayout
-        android:background="@drawable/about_header_bg_bottom"
+        android:id="@+id/about_header_panel"
         android:orientation="vertical"
         android:padding="16dp"
         android:gravity="center"
@@ -74,7 +73,7 @@
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/app_name"
             android:gravity="center"
-            android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+            android:textAppearance="@style/TextAppearance.Material3.TitleLarge.Emphasized"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content" />
 
@@ -86,7 +85,7 @@
             android:layout_height="wrap_content" />
 
         <com.google.android.material.button.MaterialButtonGroup
-            style="@style/Widget.Material3.MaterialButtonGroup.Connected"
+            style="@style/Widget.Material3Expressive.MaterialButtonGroup.Connected"
             android:layout_marginTop="@dimen/item_padding_mini"
             android:id="@+id/link_buttons"
             android:orientation="horizontal"

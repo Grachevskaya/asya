@@ -1,20 +1,22 @@
 package io.github.grachevskaya.asya.ui.fragment
 
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
-import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.annotation.DrawableRes
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.transition.AutoTransition
-import androidx.transition.TransitionManager
+import androidx.core.animation.doOnEnd
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
+import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,6 +32,10 @@ import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.ui.util.AccessibilityUtils
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.attrDrawable
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.homeItemBackgroundColor
+import com.google.android.material.shape.CornerFamily
+import com.google.android.material.shape.MaterialShapeDrawable
+import com.google.android.material.shape.ShapeAppearanceModel
+import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 import io.github.grachevskaya.asya.ui.util.dpToPx
 import io.github.grachevskaya.asya.ui.util.navController
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
@@ -78,32 +84,76 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         with(binding.aboutDescription) {
             contentTitle.setText(R.string.title_about)
             contentDescription.setText(R.string.about_description)
-            contentDescription.backgroundTintList = tint
         }
 
-        with(binding.listPeople) {
-            backgroundTintList = tint
-            clipToOutline = true
-        }
+        // The lists are card groups now -- the same code the home screen styles its rows with,
+        // and the description is the card recipe from view_half_card, so the surfaces here come
+        // from the theme instead of from a shape drawn in this file.
+
+        // The header comes from the shape system: it was three xml shapes with 24dp written into
+        // them, and the tokens are where Material 3 expressive keeps the corners its own surfaces
+        // are rounded with. The tone is the one the home cards use.
+        val panel = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge, 24)
+        val panelFill =
+            android.content.res.ColorStateList.valueOf(requireContext().homeItemBackgroundColor())
+
+        binding.aboutHeader.appInfoTop.background =
+            MaterialShapeDrawable(
+                ShapeAppearanceModel
+                    .builder()
+                    .setTopLeftCorner(CornerFamily.ROUNDED, panel)
+                    .setTopRightCorner(CornerFamily.ROUNDED, panel)
+                    .build(),
+            ).apply { fillColor = panelFill }
+
+        binding.aboutHeader.aboutHeaderPanel.background =
+            MaterialShapeDrawable(
+                ShapeAppearanceModel
+                    .builder()
+                    .setBottomLeftCorner(CornerFamily.ROUNDED, panel)
+                    .setBottomRightCorner(CornerFamily.ROUNDED, panel)
+                    .build(),
+            ).apply { fillColor = panelFill }
 
         with(binding.devHeader) {
-            background = LayerDrawable(arrayOf(
-                GradientDrawable().apply {
-                    setColor(0)
-                    cornerRadius = 24.dpToPx
-                },
-                attrDrawable(android.R.attr.selectableItemBackground),
-            ))
+            background =
+                LayerDrawable(
+                    arrayOf(
+                        MaterialShapeDrawable(
+                            ShapeAppearanceModel
+                                .builder()
+                                .setAllCorners(
+                                    CornerFamily.ROUNDED,
+                                    cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge, 24),
+                                )
+                                .build(),
+                        ).apply {
+                            fillColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+                        },
+                        attrDrawable(android.R.attr.selectableItemBackground),
+                    ),
+                )
             clipToOutline = true
 
             // The credits are folded away: the two halves are listed side by side, and neither is in
             // the way of what the page is for.
             setOnClickListener {
-                TransitionManager.beginDelayedTransition(binding.listDeveloper, AutoTransition())
-                binding.expandDevs.animate()
-                    .rotation(if (binding.listDeveloper.isVisible) 0.0f else 180.0f)
+                val folded = binding.listDeveloper
+                val opening = !folded.isVisible
+
+                binding.expandDevs
+                    .animate()
+                    .rotation(if (opening) 180.0f else 0.0f)
+                    .setDuration(220L)
                     .start()
-                binding.listDeveloper.isVisible = !binding.listDeveloper.isVisible
+
+                if (opening) folded.visibility = View.VISIBLE
+
+                // The visible rows decide where the group's large corners go, and the group is the
+                // whole list: the two credited halves and the folded one are one surface.
+                binding.listPeople.styleSegmentedCards(requireContext())
+
+                unfold(folded, opening)
             }
         }
 
@@ -170,6 +220,9 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         newLayout.text1.text = name
         newLayout.text2.text = desc
         layout.addView(newLayout.root)
+
+        // One person joins the one group the credited halves share, so that group is styled again.
+        (layout.parent as? ViewGroup)?.styleSegmentedCards(requireContext())
     }
 
     fun addLibraryItem(layout: LinearLayout, name: String, desc: String, url: String) {
@@ -180,6 +233,8 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         newLayout.text1.text = name
         newLayout.text2.text = desc
         layout.addView(newLayout.root)
+
+        layout.styleSegmentedCards(requireContext())
     }
 
     fun setOnClickUrl(view: View, url: String?) {
@@ -190,5 +245,55 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             intent.data = url.toUri()
             startActivity(intent)
         }
+    }
+
+    /*
+     * The folded half opens by growing: the list is measured at the height its rows ask for and is
+     * then laid out from nothing up to it, with the rows clipped by the list on the way. What moves
+     * is the list making room for itself, not its contents fading in.
+     */
+    private fun unfold(list: View, opening: Boolean) {
+        if (opening) {
+            val width = binding.listPeople.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+            list.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            )
+        }
+
+        val full = if (opening) list.measuredHeight else list.height
+
+        if (!AccessibilityUtils.isAnimationEnabled(requireContext().contentResolver)) {
+            list.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            if (!opening) list.visibility = View.GONE
+            list.requestLayout()
+            if (!opening) binding.listPeople.styleSegmentedCards(requireContext())
+            return
+        }
+
+        val from = if (opening) 0 else full
+        list.layoutParams.height = from
+        list.requestLayout()
+
+        ValueAnimator
+            .ofInt(from, if (opening) full else 0)
+            .apply {
+                duration = 220L
+                interpolator = FastOutSlowInInterpolator()
+                addUpdateListener {
+                    list.layoutParams.height = it.animatedValue as Int
+                    list.requestLayout()
+                }
+                doOnEnd {
+                    list.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    if (!opening) list.visibility = View.GONE
+                    list.requestLayout()
+
+                    // The corners follow the rows one can see: with the folded rows gone, the row that
+                    // is now last holds the group's large bottom one.
+                    if (!opening) binding.listPeople.styleSegmentedCards(requireContext())
+                }
+                start()
+            }
     }
 }

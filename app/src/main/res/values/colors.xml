@@ -4,6 +4,5 @@
     <color name="ic_launcher_background">#121316</color>
 
     <color name="switch_accent_enabled">?colorPrimary</color>
-    <color name="switch_accent_disabled">?colorOnSurfaceInverse</color>
-    <color name="switch_neutral">?colorSurfaceContainer</color>
+
 </resources>

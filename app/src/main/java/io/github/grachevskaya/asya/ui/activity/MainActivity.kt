@@ -1,5 +1,6 @@
 package io.github.grachevskaya.asya.ui.activity
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
@@ -12,6 +13,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.isVisible
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
+import androidx.navigation.NavOptions
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
@@ -22,6 +26,7 @@ import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.databinding.ActivityMainBinding
 import io.github.grachevskaya.asya.host.HostContext
+import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.ThemeUtils
 import io.github.grachevskaya.asya.util.ConfigUtils
@@ -110,6 +115,7 @@ class MainActivity
          * for it. The task description then went without an icon and the recents entry fell back to the
          * host's -- the right name with the wrong face.
          */
+
         /**
          * The inflater every view in here is built with, on the manager's own resources.
          *
@@ -226,7 +232,31 @@ class MainActivity
             val startAt = pendingDestination.takeIf { it != 0 && it in BOTTOM_BAR_PLACES && it != R.id.nav_home }
             pendingDestination = 0
 
-            setupNavigation(binding, ensureNavHost(startAt))
+            val host = ensureNavHost(startAt)
+
+            /*
+             * The host is built in this file, so nothing tells the framework that it is the fragment
+             * that answers for navigation: with the graph's own host that is
+             * app:defaultNavHost="true" on the tag, and in code it is this call. It is the fragment a
+             * back press is routed to and the one a predictive back gesture asks for the animation.
+             */
+            supportFragmentManager.beginTransaction().setPrimaryNavigationFragment(host).commit()
+
+            /*
+             * Back, as the fallback and nothing else.
+             *
+             * It is registered disabled; the destination listener arms it in the one case nothing
+             * else can answer -- a page that is not home with nothing behind it. A press is answered
+             * by the last enabled callback, the navigation library registers its own after this one,
+             * so wherever the library can pop the page it does, and it does it with the animation a
+             * predictive back gesture is already showing while the finger is down. This one would
+             * otherwise stand in front of that and take the preview away.
+             */
+            val backHome = onBackPressedDispatcher.addCallback(this, enabled = false) {
+                navHostIn(binding.root)?.navController?.navigate(R.id.nav_home)
+            }
+
+            setupNavigation(binding, host, backHome)
         }
 
         /**
@@ -234,8 +264,8 @@ class MainActivity
          * chosen accent over them otherwise.
          */
         private fun applyColorOverlays() {
-            // I add this manually because the E2E code is not working like I want
-            // They should give us a separate method to set it for enableEdgeToEdge
+            // enableEdgeToEdge leaves the navigation bar contrast alone; the call below is the one its
+            // own source makes at the same point.
             // Source: https://github.com/androidx/androidx/blob/c0f9aabcf6f32029249ac7647711744b68e2a003/activity/activity/src/main/java/androidx/activity/EdgeToEdge.kt#L299
 
             if (DynamicColors.isDynamicColorAvailable()) {
@@ -267,6 +297,22 @@ class MainActivity
             readyToKill = false
             prepareRecreate()
             recreate()
+        }
+
+        /**
+         * The language, applied exactly like the theme: the strings are read while views are
+         * inflated, so the same rebuild applies it, and prepareRecreate keeps that rebuild from
+         * showing the host window behind it. The new Activity reads the stored choice in
+         * getLocaleAppliedContext, which is where the language reaches the resources.
+         */
+        internal fun applyLanguageInPlace() {
+            readyToKill = false
+            prepareRecreate()
+
+            // The same rebuild the theme uses. The language itself is applied where the activity
+            // resources are set, in attachBaseContext, and AppCompat is deliberately not used for
+            // it: its write reaches the whole process, and in a host process that is the host.
+            applyThemeInPlace()
         }
 
         /** AppCompat changes the configuration; the callback below performs the same rebuild. */
@@ -314,13 +360,44 @@ class MainActivity
         private fun setupNavigation(
             binding: ActivityMainBinding,
             host: NavHostFragment,
+            backHome: OnBackPressedCallback,
         ) {
             val controller = host.navController
             val bottomNav = binding.bottomNav
             bottomNav.setupWithNavController(controller)
+
+            /*
+             * A page from the bar is pushed onto the home page instead of replacing it. That is what
+             * makes a back press there a pop -- which the navigation library animates, and which a
+             * predictive back gesture can show before the finger is lifted -- rather than a press
+             * that ends the task. Selecting the page already on screen still does nothing.
+             */
+            bottomNav.setOnItemSelectedListener { item ->
+                if (controller.currentDestination?.id != item.itemId) {
+                    controller.navigate(
+                        item.itemId,
+                        null,
+                        NavOptions
+                            .Builder()
+                            .setLaunchSingleTop(true)
+                            .setPopUpTo(R.id.nav_home, false)
+                            .build(),
+                    )
+                }
+
+                true
+            }
+
             controller.addOnDestinationChangedListener { _, destination, _ ->
                 bottomNav.isVisible = destination.id in BOTTOM_BAR_PLACES
                 lastDestination = destination.id
+
+                /*
+                 * Armed only where nothing else can answer: a page that is not home with nothing
+                 * behind it. Everywhere else the library pops the page and this stays out of the way.
+                 */
+                backHome.isEnabled =
+                    destination.id != R.id.nav_home && controller.previousBackStackEntry == null
             }
 
             if (fadeInOnCreate) {
@@ -345,6 +422,7 @@ class MainActivity
             theme.applyStyle(ThemeUtils.getOverlayThemeStyleRes(this), true)
         }
 
+        @SuppressLint("MissingSuperCall") // Nothing is saved: the host is what would restore it.
         override fun onSaveInstanceState(outState: Bundle) {
             // Nothing is saved, because the host is what would restore it: the screen is rebuilt.
         }
@@ -372,6 +450,21 @@ class MainActivity
         override fun attachBaseContext(newBase: Context?) {
             val base = hosted ?: newBase
             super.attachBaseContext(getLocaleAppliedContext(base))
+
+            /*
+             * The language, written on the resources this activity actually holds.
+             *
+             * AppCompat delegate applies the app locale list over everything attachBaseContext set
+             * up, and in a hosted manager that list is the host own -- empty means follow the system
+             * -- so the language derived above was overwritten and the text never changed. What is
+             * written here survives that: these resources are the manager apk own object, which no
+             * other application shares, so the host is not touched either.
+             */
+            val configuration = Configuration(resources.configuration)
+            configuration.setLocale(ConfigUtils.getLocale())
+
+            @Suppress("DEPRECATION")
+            resources.updateConfiguration(configuration, resources.displayMetrics)
         }
 
         override fun onDestroy() {
@@ -385,7 +478,15 @@ class MainActivity
         }
 
         private fun getLocaleAppliedContext(context: Context?): Context? {
-            val config = asyaApp.resources.configuration
+            /*
+             * The manager's application is created by the host side before this activity starts,
+             * but an activity that arrives first must not be the end of the process: the crash
+             * records have exactly that shape -- a host activity turned into this one before its
+             * application existed. Without it the locale is applied to what the context already
+             * carries, which is the host's own configuration.
+             */
+            val app = runCatching { asyaApp }.getOrNull()
+            val config = (app?.resources ?: context?.resources)?.configuration ?: return context
             config.setLocale(ConfigUtils.getLocale())
 
             return context?.createConfigurationContext(config)

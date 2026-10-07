@@ -8,6 +8,7 @@ import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
 import io.github.grachevskaya.asya.common.FilterHolder
 import io.github.grachevskaya.asya.databinding.StatItemViewBinding
+import io.github.grachevskaya.asya.ui.util.groupedRowBackground
 import io.github.grachevskaya.asya.util.PackageHelper
 
 class StatAdapter(
@@ -76,15 +77,7 @@ class StatAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(logItem: StatItem) {
             binding.root.background =
-                ContextCompat.getDrawable(
-                    binding.root.context,
-                    when {
-                        itemCount <= 1 -> R.drawable.row_group_single
-                        absoluteAdapterPosition == 0 -> R.drawable.row_group_top
-                        absoluteAdapterPosition == itemCount - 1 -> R.drawable.row_group_bottom
-                        else -> R.drawable.row_group_middle
-                    },
-                )
+                binding.root.context.groupedRowBackground(absoluteAdapterPosition, itemCount)
 
             // The row remembers which app it is about: the icon arrives after the bind, and by then
             // the view may well be about another app.

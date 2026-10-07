@@ -33,21 +33,27 @@
                 android:id="@+id/card_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium.Emphasized"
                 android:textColor="?attr/colorOnSecondaryContainer"
                 android:maxLines="1"
                 android:ellipsize="end" />
 
-            <TextView
+            <com.google.android.material.chip.Chip
                 android:id="@+id/card_state"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:background="@drawable/chip_bg_ok"
-                android:paddingHorizontal="4dp"
-                android:paddingVertical="2dp"
-                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
-                android:textColor="?attr/colorOnPrimary" />
+                android:checkable="false"
+                android:clickable="false"
+                android:focusable="false"
+                android:textAppearance="@style/TextAppearance.Material3.LabelMedium.Emphasized"
+                app:chipStrokeWidth="0dp"
+                app:ensureMinTouchTargetSize="false"
+                app:chipMinTouchTargetSize="0dp"
+                app:chipMinHeight="20dp"
+                app:chipStartPadding="4dp"
+                app:chipEndPadding="4dp"
+                app:chipCornerRadius="4dp" />
 </LinearLayout>
 </LinearLayout>
 

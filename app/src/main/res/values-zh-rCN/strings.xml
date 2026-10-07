@@ -72,6 +72,7 @@
     <string name="template_new_blacklist">创建黑名单应用模板</string>
     <string name="template_new_whitelist">创建白名单应用模板</string>
     <string name="template_delete">您确定要删除此模板吗？</string>
+    <string name="template_name_write">在此输入名称</string>
     <string name="template_name">模板名称</string>
     <string name="template_name_invalid">名称无效</string>
     <string name="template_delete_title">删除模板</string>

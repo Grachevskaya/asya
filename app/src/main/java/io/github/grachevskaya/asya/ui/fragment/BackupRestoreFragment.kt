@@ -230,6 +230,7 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
 
         val dialog =
             MaterialAlertDialogBuilder(requireContext())
+                .setIcon(R.drawable.outline_settings_backup_restore_24)
                 .setTitle(title)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -344,6 +345,7 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
     private fun onImportFailed(cause: Throwable) {
         MaterialAlertDialogBuilder(requireContext())
             .setCancelable(false)
+            .setIcon(R.drawable.outline_info_24)
             .setTitle(R.string.home_import_failed)
             .setMessage(cause.message)
             .setPositiveButton(android.R.string.ok, null)

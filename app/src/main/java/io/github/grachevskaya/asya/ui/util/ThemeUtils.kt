@@ -2,6 +2,7 @@ package io.github.grachevskaya.asya.ui.util
 
 import android.content.Context
 import android.content.res.Configuration
+import android.util.TypedValue
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import androidx.annotation.AttrRes
@@ -11,6 +12,8 @@ import androidx.annotation.StyleRes
 import androidx.core.content.res.ResourcesCompat
 import androidx.fragment.app.Fragment
 import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.resources.MaterialResources
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.ui.util.FixedSizeDrawable
@@ -81,29 +84,32 @@ object ThemeUtils {
         }
 
     /**
-     * Retrieve a color from the current [android.content.res.Resources.Theme].
+     * A colour role out of the current theme. The resolving is the library's: MaterialColors walks
+     * the theme and its overlays the way the Material themes are built to be walked, which is not
+     * something a spare obtainStyledAttributes call gets right for a role that comes from an
+     * overlay rather than from the theme itself.
      */
     @ColorInt
     fun Context.themeColor(
         @AttrRes themeAttrId: Int,
-    ): Int {
-        val style = obtainStyledAttributes(intArrayOf(themeAttrId))
-        val color = style.getColor(0, Color.MAGENTA)
-        style.recycle()
-        return color
-    }
+    ): Int = MaterialColors.getColor(this, themeAttrId, Color.MAGENTA)
 
     @ColorInt
     fun Fragment.themeColor(
         @AttrRes themeAttrId: Int,
     ) = requireContext().themeColor(themeAttrId)
 
+    /**
+     * The same for a drawable role. The lookup is still one styled-attributes call, because that is
+     * what resolving an attribute is; what the library brings is the rest -- the tint, the theme
+     * the drawable is handed, and the caching -- which a bare getDrawable(0) does not.
+     */
     fun Context.attrDrawable(
         @AttrRes themeAttrId: Int,
     ): Drawable? {
-        val style = obtainStyledAttributes(intArrayOf(themeAttrId))
-        val drawable = style.getDrawable(0)
-        style.recycle()
+        val attributes = obtainStyledAttributes(intArrayOf(themeAttrId))
+        val drawable = MaterialResources.getDrawable(this, attributes, 0)
+        attributes.recycle()
         return drawable
     }
 
@@ -137,4 +143,44 @@ object ThemeUtils {
     ) = FixedSizeDrawable(asDrawable(context), sizeDp.dpToPx.toInt())
 
     fun Int.asColor(context: Context) = ResourcesCompat.getColor(context.resources, this, context.theme)
+
+    /**
+     * A corner size from the shape system the theme carries, so a surface drawn in code is rounded
+     * like the widgets beside it instead of like a number written here. The Material 3 expressive
+     * themes set the whole family; [fallbackDp] is the value this file used before the theme was
+     * the one deciding.
+     */
+    fun Context.cornerSize(
+        @AttrRes attrRes: Int,
+        @StyleRes styleRes: Int,
+        fallbackDp: Int,
+    ): Float {
+        /*
+         * The value is taken from the theme only when it really is a dimension. A corner token a
+         * theme points at a style -- which the Material themes do -- is a reference, and reading it
+         * as a dimension throws; the shape system's own style for that corner is then the answer,
+         * and only a theme with neither leaves the number this file used before.
+         */
+        val typed = TypedValue()
+        val attributes = obtainStyledAttributes(intArrayOf(attrRes))
+        val isDimension = attributes.getValue(0, typed) && typed.type == TypedValue.TYPE_DIMENSION
+        attributes.recycle()
+
+        if (isDimension) return typed.getDimension(resources.displayMetrics)
+
+        // The shape system keeps the same corner as a style with cornerSize in it, which is a
+        // dimension and can be read as one. The Material themes point the tokens at these styles
+        // precisely so that a theme can change the family without changing every caller.
+        val corners = obtainStyledAttributes(styleRes, intArrayOf(com.google.android.material.R.attr.cornerSize))
+        val size = corners.getDimension(0, fallbackDp.dpToPx)
+        corners.recycle()
+
+        return size
+    }
+
+    fun Fragment.cornerSize(
+        @AttrRes attrRes: Int,
+        @StyleRes styleRes: Int,
+        fallbackDp: Int,
+    ) = requireContext().cornerSize(attrRes, styleRes, fallbackDp)
 }

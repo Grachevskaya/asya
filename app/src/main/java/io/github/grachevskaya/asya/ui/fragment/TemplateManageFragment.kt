@@ -13,6 +13,8 @@ import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.databinding.FragmentTemplateManageBinding
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.ui.adapter.TemplateAdapter
+import io.github.grachevskaya.asya.ui.util.RowGroup
+import io.github.grachevskaya.asya.ui.util.groupedRowBackground
 import io.github.grachevskaya.asya.ui.util.navigate
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 import io.github.grachevskaya.asya.ui.util.setupToolbar
@@ -25,6 +27,10 @@ class TemplateManageFragment : Fragment(R.layout.fragment_template_manage) {
         view: View,
         savedInstanceState: Bundle?,
     ) {
+        // The two "new template" rows are one group: the shape system rounds the ends.
+        binding.newBlacklistTemplate.background = requireContext().groupedRowBackground(RowGroup.Top)
+        binding.newWhitelistTemplate.background = requireContext().groupedRowBackground(RowGroup.Bottom)
+
         setupToolbar(
             toolbar = binding.toolbar,
             title = getString(R.string.title_template_manage),
@@ -33,6 +39,7 @@ class TemplateManageFragment : Fragment(R.layout.fragment_template_manage) {
                 when (it.itemId) {
                     R.id.menu_info -> {
                         MaterialAlertDialogBuilder(requireContext())
+                            .setIcon(R.drawable.outline_info_24)
                             .setTitle(R.string.title_template_manage)
                             .setMessage(R.string.template_usage_hint)
                             .setNegativeButton(android.R.string.ok, null)
