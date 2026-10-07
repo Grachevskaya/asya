@@ -12,11 +12,14 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.navArgs
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.androidbroadcast.vbpd.viewBinding
+import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.CollectionUtils.removeIf
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
 import io.github.grachevskaya.asya.common.Constants.CONFIG_VERSION_NO_SETTINGS
 import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.Utils.cleanRemnantsFromConfig
+import io.github.grachevskaya.asya.databinding.FragmentBackupRestoreBinding
+import io.github.grachevskaya.asya.databinding.LayoutListEmptyBinding
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.ui.util.contentResolver
 import io.github.grachevskaya.asya.ui.util.navController
@@ -25,14 +28,10 @@ import io.github.grachevskaya.asya.ui.util.setupToolbar
 import io.github.grachevskaya.asya.ui.util.showToast
 import io.github.grachevskaya.asya.util.PackageHelper.loadAppLabel
 import kotlinx.coroutines.launch
-import io.github.grachevskaya.asya.R
-import io.github.grachevskaya.asya.databinding.FragmentBackupRestoreBinding
-import io.github.grachevskaya.asya.databinding.LayoutListEmptyBinding
 import java.util.Date
 import java.util.Locale
 
 class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
-
     private val binding by viewBinding(FragmentBackupRestoreBinding::bind)
 
     private val args by lazy { navArgs<BackupRestoreFragmentArgs>() }
@@ -44,12 +43,10 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
     private val trimConfig get() = binding.switchTrimConfig.isChecked
     private val overwriteApps get() = binding.switchOverwriteApps.isChecked
     private val overwriteTemplates get() = binding.switchOverwriteTemplates.isChecked
-    private val overwriteSettingsTemplates get() = binding.switchOverwriteTemplates.isChecked
 
     private enum class BRCategory {
         APP,
         TEMPLATE,
-        SETTINGS_TEMPLATE,
     }
 
     private val markedForBackup = BRCategory.entries.associateWith { mutableSetOf<String>() }
@@ -59,13 +56,13 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
             if (uri == null) return@backup
             val output = contentResolver.openOutputStream(uri)
 
-            if (output == null) showToast(R.string.home_export_failed)
-            else {
+            if (output == null) {
+                showToast(R.string.home_export_failed)
+            } else {
                 clearNotImportedItems {
                     if (!includeSettings) {
                         val newConfig = JsonConfig(CONFIG_VERSION_NO_SETTINGS)
                         newConfig.templates.putAll(importedConfig.templates)
-                        newConfig.settingsTemplates.putAll(importedConfig.settingsTemplates)
                         newConfig.scope.putAll(importedConfig.scope)
                         importedConfig = newConfig
                     }
@@ -87,8 +84,11 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
             }
 
             try {
-                val backupContent = contentResolver
-                    .openInputStream(uri)!!.reader().use { it.readText() }
+                val backupContent =
+                    contentResolver
+                        .openInputStream(uri)!!
+                        .reader()
+                        .use { it.readText() }
                 importedConfig = JsonConfig.parse(backupContent)
                 loadScreenContents()
             } catch (cause: Throwable) {
@@ -98,18 +98,25 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
             }
         }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
 
         setupToolbar(
             binding.toolbar,
             title = getString(R.string.home_backup_and_restore),
-            subtitle = getString(
-                if (isBackupMode) R.string.home_backup_config
-                        else R.string.home_restore_config
-            ),
+            subtitle =
+                getString(
+                    if (isBackupMode) {
+                        R.string.home_backup_config
+                    } else {
+                        R.string.home_restore_config
+                    },
+                ),
             menuRes = R.menu.menu_backup_restore,
-            onMenuOptionSelected = this@BackupRestoreFragment::onMenuOptionSelected
+            onMenuOptionSelected = this@BackupRestoreFragment::onMenuOptionSelected,
         )
 
         if (isBackupMode) {
@@ -126,18 +133,16 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
     @SuppressLint("DefaultLocale")
     @Suppress("DEPRECATION")
     private fun reloadScreenContents() {
-        binding.manageApps.subText = getString(
-            R.string.backup_restore_items_count,
-            markedForBackup[BRCategory.APP]!!.size,
-        )
-        binding.templateList.subText = getString(
-            R.string.backup_restore_items_count,
-            markedForBackup[BRCategory.TEMPLATE]!!.size,
-        )
-        binding.settingsTemplateList.subText = getString(
-            R.string.backup_restore_items_count,
-            markedForBackup[BRCategory.SETTINGS_TEMPLATE]!!.size,
-        )
+        binding.manageApps.subText =
+            getString(
+                R.string.backup_restore_items_count,
+                markedForBackup[BRCategory.APP]!!.size,
+            )
+        binding.templateList.subText =
+            getString(
+                R.string.backup_restore_items_count,
+                markedForBackup[BRCategory.TEMPLATE]!!.size,
+            )
     }
 
     private fun loadScreenContents() {
@@ -145,7 +150,6 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
 
         markedForBackup[BRCategory.APP]!!.addAll(importedConfig.scope.keys)
         markedForBackup[BRCategory.TEMPLATE]!!.addAll(importedConfig.templates.keys)
-        markedForBackup[BRCategory.SETTINGS_TEMPLATE]!!.addAll(importedConfig.settingsTemplates.keys)
 
         with(binding.manageApps) {
             text = getString(R.string.backup_restore_apps)
@@ -158,13 +162,6 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
             text = getString(R.string.backup_restore_templates)
             setOnClickListener {
                 showDialogToSelect(BRCategory.TEMPLATE)
-            }
-        }
-
-        with(binding.settingsTemplateList) {
-            text = getString(R.string.backup_restore_settings_templates)
-            setOnClickListener {
-                showDialogToSelect(BRCategory.SETTINGS_TEMPLATE)
             }
         }
 
@@ -183,7 +180,7 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
                         R.string.settings_overwrite
                     } else {
                         R.string.backup_restore_append
-                    }
+                    },
                 )
             }
         }
@@ -198,22 +195,7 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
                         R.string.settings_overwrite
                     } else {
                         R.string.backup_restore_append
-                    }
-                )
-            }
-        }
-
-        with(binding.switchOverwriteSettingsTemplates) {
-            isVisible = !isBackupMode
-            isChecked = true
-
-            setOnCheckedChangeListener { _, value ->
-                setText(
-                    if (value) {
-                        R.string.settings_overwrite
-                    } else {
-                        R.string.backup_restore_append
-                    }
+                    },
                 )
             }
         }
@@ -222,38 +204,45 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
     }
 
     private fun showDialogToSelect(category: BRCategory) {
-        val items = when (category) {
-            BRCategory.APP -> importedConfig.scope.keys
-            BRCategory.TEMPLATE -> importedConfig.templates.keys
-            BRCategory.SETTINGS_TEMPLATE -> importedConfig.settingsTemplates.keys
-        }
-
-        val labels = when (category) {
-            BRCategory.APP -> items.map { loadAppLabel(it) }
-            BRCategory.TEMPLATE, BRCategory.SETTINGS_TEMPLATE -> items
-        }.toTypedArray()
-
-        val checked = items.map {
-            markedForBackup[category]!!.contains(it)
-        }.toBooleanArray()
-
-        val title = when (category) {
-            BRCategory.APP -> getString(R.string.title_app_manage)
-            BRCategory.TEMPLATE, BRCategory.SETTINGS_TEMPLATE -> getString(R.string.title_template_manage)
-        }
-
-        val dialog = MaterialAlertDialogBuilder(requireContext())
-            .setTitle(title)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                val category = markedForBackup[category]
-                category!!.clear()
-                category.addAll(items.mapIndexedNotNull { i, name ->
-                    if (checked[i]) name else null
-                })
-
-                reloadScreenContents()
+        val items =
+            when (category) {
+                BRCategory.APP -> importedConfig.scope.keys
+                BRCategory.TEMPLATE -> importedConfig.templates.keys
             }
+
+        val labels =
+            when (category) {
+                BRCategory.APP -> items.map { loadAppLabel(it) }
+                BRCategory.TEMPLATE -> items
+            }.toTypedArray()
+
+        val checked =
+            items
+                .map {
+                    markedForBackup[category]!!.contains(it)
+                }.toBooleanArray()
+
+        val title =
+            when (category) {
+                BRCategory.APP -> getString(R.string.title_app_manage)
+                BRCategory.TEMPLATE -> getString(R.string.title_template_manage)
+            }
+
+        val dialog =
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(title)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    val category = markedForBackup[category]
+                    category!!.clear()
+                    category.addAll(
+                        items.mapIndexedNotNull { i, name ->
+                            if (checked[i]) name else null
+                        },
+                    )
+
+                    reloadScreenContents()
+                }
 
         if (items.isNotEmpty()) {
             dialog.setMultiChoiceItems(labels, checked) { _, i, value ->
@@ -270,48 +259,42 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
         dialog.show()
     }
 
-    private fun onRestore() = try {
-        clearNotImportedItems {
-            if (!overwriteApps || !overwriteTemplates) {
-                val config = ConfigManager.getRawConfig(false)
+    private fun onRestore() =
+        try {
+            clearNotImportedItems {
+                if (!overwriteApps || !overwriteTemplates) {
+                    val config = ConfigManager.getRawConfig(false)
 
-                if (!overwriteApps) {
-                    config.scope.map {
-                        importedConfig.scope.putIfAbsent(it.key, it.value)
+                    if (!overwriteApps) {
+                        config.scope.map {
+                            importedConfig.scope.putIfAbsent(it.key, it.value)
+                        }
+                    }
+
+                    if (!overwriteTemplates) {
+                        config.templates.map {
+                            importedConfig.templates.putIfAbsent(it.key, it.value)
+                        }
                     }
                 }
 
-                if (!overwriteTemplates) {
-                    config.templates.map {
-                        importedConfig.templates.putIfAbsent(it.key, it.value)
-                    }
+                if (!includeSettings || importedConfig.configVersion == CONFIG_VERSION_NO_SETTINGS) {
+                    val currentConfig = ConfigManager.getRawConfig(true)
+
+                    currentConfig.scope.sync(importedConfig.scope)
+                    currentConfig.templates.sync(importedConfig.templates)
+
+                    ConfigManager.importConfig(currentConfig.toString())
+                } else {
+                    ConfigManager.importConfig(importedConfig.toString())
                 }
 
-                if (!overwriteSettingsTemplates) {
-                    config.settingsTemplates.map {
-                        importedConfig.settingsTemplates.putIfAbsent(it.key, it.value)
-                    }
-                }
+                showToast(android.R.string.ok)
+                navController.navigateUp()
             }
-
-            if (!includeSettings || importedConfig.configVersion == CONFIG_VERSION_NO_SETTINGS) {
-                val currentConfig = ConfigManager.getRawConfig(true)
-
-                currentConfig.scope.sync(importedConfig.scope)
-                currentConfig.templates.sync(importedConfig.templates)
-                currentConfig.settingsTemplates.sync(importedConfig.settingsTemplates)
-
-                ConfigManager.importConfig(currentConfig.toString())
-            } else {
-                ConfigManager.importConfig(importedConfig.toString())
-            }
-
-            showToast(android.R.string.ok)
-            navController.navigateUp()
+        } catch (cause: Throwable) {
+            onImportFailed(cause)
         }
-    } catch (cause: Throwable) {
-        onImportFailed(cause)
-    }
 
     private fun clearNotImportedItems(onFinish: () -> Unit) {
         importedConfig.scope.removeIf { pkg, _ ->
@@ -322,20 +305,17 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
             !markedForBackup[BRCategory.TEMPLATE]!!.contains(template)
         }
 
-        importedConfig.settingsTemplates.removeIf { template, _ ->
-            !markedForBackup[BRCategory.SETTINGS_TEMPLATE]!!.contains(template)
-        }
-
         if (isBackupMode) {
             importedConfig.cleanRemnantsFromConfig()
         }
 
         if (trimConfig) {
-            val progressDialog = MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.settings_clear_uninstalled_app_configs)
-                .setView(R.layout.dialog_loading)
-                .setCancelable(false)
-                .create()
+            val progressDialog =
+                MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.settings_clear_uninstalled_app_configs)
+                    .setView(R.layout.dialog_loading)
+                    .setCancelable(false)
+                    .create()
 
             progressDialog.show()
 
@@ -374,7 +354,6 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
                     .setMessage(cause.stackTraceToString())
                     .setPositiveButton(android.R.string.ok, null)
                     .show()
-            }
-            .show()
+            }.show()
     }
 }

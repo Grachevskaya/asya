@@ -9,6 +9,10 @@
         android:icon="@drawable/outline_android_24"
         android:title="@string/title_app_manage" />
     <item
+        android:id="@+id/nav_template_manage"
+        android:icon="@drawable/ic_outline_layers_24"
+        android:title="@string/title_template_manage" />
+    <item
         android:id="@+id/nav_logs"
         android:icon="@drawable/outline_assignment_24"
         android:title="@string/title_logs" />

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 import io.github.grachevskaya.asya.service.ServiceClient
+import io.github.grachevskaya.asya.ui.util.StatusRefresh
 import io.github.grachevskaya.asya.util.PackageHelper
 
 class AppChangeReceiver : BroadcastReceiver() {
@@ -32,7 +33,12 @@ class AppChangeReceiver : BroadcastReceiver() {
         if (intent.action in actions) {
             ServiceClient.log(Log.INFO, TAG, "Received intent: $intent")
             PackageHelper.invalidateCache()
-            // ServiceClient.handlePackageEvent(intent.action, intent.data?.encodedSchemeSpecificPart)
+
+            // The bridge is the authority on when a transaction is over, and it is what the manager
+            // refreshes on. This is the way out when it is not there -- a build whose hook the
+            // framework does not have, or a process the host has not offered it from yet: the
+            // broadcast is early, so the cards may read the old shape, and they read it again.
+            StatusRefresh.trigger()
         }
     }
 }

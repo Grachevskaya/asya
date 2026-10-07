@@ -5,6 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:background="?attr/colorSurfaceContainer"
     tools:context=".ui.fragment.HomeFragment">
 
     <com.google.android.material.appbar.AppBarLayout
@@ -32,9 +33,9 @@
                 app:layout_collapseMode="pin"
                 android:elevation="0dp" />
 
-        </com.google.android.material.appbar.CollapsingToolbarLayout>
+</com.google.android.material.appbar.CollapsingToolbarLayout>
 
-    </com.google.android.material.appbar.AppBarLayout>
+</com.google.android.material.appbar.AppBarLayout>
 
     <ScrollView
         android:layout_width="match_parent"
@@ -68,22 +69,23 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1" />
-            </LinearLayout>
-
-            <include
-                android:id="@+id/hooks_card"
-                layout="@layout/view_hooks_card" />
+</LinearLayout>
 
             <include
                 android:id="@+id/injection_card"
                 layout="@layout/view_injection_card" />
 
+            <include
+                android:id="@+id/hooks_card"
+                layout="@layout/view_hooks_card" />
+
             <com.google.android.material.card.MaterialCardView
+                android:padding="10dp"
                 app:cardCornerRadius="28dp"
                 app:cardBackgroundColor="?attr/colorSurfaceContainerLowest"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="12dp"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="16dp"
                 app:strokeColor="@null"
                 app:strokeWidth="0dp"
                 android:layout_width="match_parent"
@@ -93,10 +95,10 @@
                     android:id="@+id/how_to_use"
                     layout="@layout/view_home_item" />
 
-            </com.google.android.material.card.MaterialCardView>
+</com.google.android.material.card.MaterialCardView>
 
-        </LinearLayout>
+</LinearLayout>
 
-    </ScrollView>
+</ScrollView>
 
 </LinearLayout>

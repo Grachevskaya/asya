@@ -15,6 +15,9 @@ public interface IActivityManager extends IInterface {
     void registerUidObserver(IUidObserver observer, int which, int cutpoint, String callingPackage)
             throws RemoteException;
 
+    void registerProcessObserver(IProcessObserver observer)
+            throws RemoteException;
+
     void forceStopPackage(String packageName, int userId)
             throws RemoteException;
 

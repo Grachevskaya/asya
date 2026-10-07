@@ -5,9 +5,10 @@
 # request with the manager's own -- out of the apk it carries.
 
 MODDIR="${0%/*}"
-PKG=io.github.grachevskaya.asya
-ACTIVITY=io.github.grachevskaya.asya.ui.activity.MainActivity
-APK_FILE="$MODDIR/manager.apk"
+HOST=com.android.systemui
+EXTRA=asya_host
+TOKEN_EXTRA=asya_host_token
+TOKEN_FILE="$MODDIR/state/host_token"
 
 
 if [ ! -s "$TOKEN_FILE" ]; then
@@ -16,6 +17,12 @@ if [ ! -s "$TOKEN_FILE" ]; then
 fi
 
 TOKEN=$(cat "$TOKEN_FILE")
+
+# The host reads the manager out of its own state directory: the copy and its oat are made by the
+# installer, and remade here when something has taken them away since -- a wiped host, a package
+# that was flashed without the installer's hooks.
+. "$MODDIR/prep-manager.sh"
+prep_manager "$MODDIR"
 
 for user in $(pm list users | cut -f1 -d: | cut -f2 -d{ | tail -n +2); do
   [ "$user" = "999" ] && continue

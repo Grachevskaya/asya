@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    app:cardCornerRadius="14dp"
-    app:cardBackgroundColor="?attr/colorSurfaceContainer"
+    app:cardCornerRadius="4dp"
+    app:cardBackgroundColor="?attr/colorSurfaceBright"
     app:strokeColor="@null"
     app:strokeWidth="0dp"
     android:layout_width="match_parent"
@@ -44,7 +44,7 @@
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
-        </LinearLayout>
-    </LinearLayout>
+</LinearLayout>
+</LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

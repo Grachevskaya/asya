@@ -2,24 +2,39 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurfaceContainer">
 
     <com.google.android.material.appbar.AppBarLayout
+        style="@style/Widget.Material3Expressive.AppBarLayout"
         android:background="@android:color/transparent"
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        app:liftOnScroll="true">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
+        <com.google.android.material.appbar.CollapsingToolbarLayout
+            android:id="@+id/collapsing"
             android:layout_width="match_parent"
-            android:layout_height="?actionBarSize"
-            android:elevation="0dp" />
-    </com.google.android.material.appbar.AppBarLayout>
+            android:layout_height="wrap_content"
+            app:title="@string/title_template_manage"
+            app:titleCollapseMode="scale"
+            app:expandedTitleTextAppearance="@style/TextAppearance.Material3.HeadlineMedium"
+            app:collapsedTitleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
+
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="?actionBarSize"
+                app:layout_collapseMode="pin"
+                android:elevation="0dp" />
+</com.google.android.material.appbar.CollapsingToolbarLayout>
+</com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
@@ -27,6 +42,10 @@
             android:id="@+id/new_blacklist_template"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="3dp"
+            android:background="@drawable/row_group_top"
             app:icon="@drawable/baseline_add_24"
             app:text="@string/template_new_blacklist" />
 
@@ -34,23 +53,18 @@
             android:id="@+id/new_whitelist_template"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:background="@drawable/row_group_bottom"
             app:icon="@drawable/baseline_add_24"
             app:text="@string/template_new_whitelist" />
-
-        <io.github.grachevskaya.asya.ui.view.ListItemView
-            android:id="@+id/new_setting_template"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:icon="@drawable/baseline_add_24"
-            app:text="@string/template_new_setting" />
-
-        <include layout="@layout/line" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/template_list"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="10dp"
-            android:layout_weight="1" />
-    </LinearLayout>
+            android:layout_marginTop="9dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="16dp" />
+</LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

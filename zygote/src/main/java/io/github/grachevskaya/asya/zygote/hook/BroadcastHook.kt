@@ -6,11 +6,10 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import com.v7878.unsafe.invoke.EmulatedStackFrame
-import io.github.grachevskaya.asya.common.CollectionUtils.firstOrNullWithType
 import io.github.grachevskaya.asya.zygote.service.ReturnValue
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
-import io.github.grachevskaya.asya.zygote.util.ZLUtils.args
+import io.github.grachevskaya.asya.zygote.util.ZLUtils.firstReferenceArgument
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getBooleanField
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getIntField
@@ -71,7 +70,7 @@ class BroadcastHook : IFrameworkHook {
                 },
                 "broadcastIntentLocked",
             ) { _, frame, _ ->
-                val intent = frame.args.firstOrNullWithType<Intent>() ?: return@hookBefore
+                val intent = frame.firstReferenceArgument(Intent::class.java) ?: return@hookBefore
                 changeUsbStateBroadcast(intent)
             }
         }
@@ -82,7 +81,7 @@ class BroadcastHook : IFrameworkHook {
         frame: EmulatedStackFrame,
         returnValue: ReturnValue,
     ) {
-        val record = frame.getArgument(1)
+        val record = frame.getArgument(1) ?: return
         val caller = getObjectField(record, "callerPackage") as? String ?: return
         val component = getObjectField(record, "targetComp") as? ComponentName ?: return
         val targetApp = component.packageName

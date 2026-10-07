@@ -18,7 +18,7 @@
             android:layout_width="match_parent"
             android:layout_height="?actionBarSize"
             android:elevation="0dp" />
-    </com.google.android.material.appbar.AppBarLayout>
+</com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
         android:id="@+id/main_layout"
@@ -92,25 +92,5 @@
             android:background="@null"
             tools:ignore="UseSwitchCompatOrMaterialXml" />
 
-        <io.github.grachevskaya.asya.ui.view.ListItemView
-            android:id="@+id/settings_template_list"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:buttonText="@string/edit_list"
-            app:icon="@drawable/outline_settings_24" />
-
-        <Switch
-            android:id="@+id/switch_overwrite_settings_templates"
-            android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
-            android:layout_marginHorizontal="@dimen/item_padding_horizontal"
-            android:paddingStart="@dimen/app_icon_size"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_overwrite"
-            android:thumb="@drawable/switch_thumb"
-            android:track="@drawable/switch_track"
-            android:background="@null"
-            tools:ignore="UseSwitchCompatOrMaterialXml" />
-
-    </LinearLayout>
+</LinearLayout>
 </LinearLayout>

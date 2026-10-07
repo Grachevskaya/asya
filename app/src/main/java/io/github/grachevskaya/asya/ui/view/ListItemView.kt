@@ -62,22 +62,6 @@ class ListItemView @JvmOverloads constructor(
         binding.icon.isVisible = show
     }
 
-    fun showAsHeader() {
-        showIcon(false)
-
-        with(binding.text) {
-            typeface = Typeface.DEFAULT_BOLD
-
-            val textColor = context.themeColor(
-                androidx.appcompat.R.attr.colorPrimary,
-            )
-            setTextColor(textColor)
-
-            val padding = 8.dpToPx.toInt()
-            setPaddingRelative(paddingStart, padding, paddingEnd, padding)
-        }
-    }
-
     override fun setOnClickListener(l: OnClickListener?) {
         if (binding.button.isVisible) {
             binding.button.setOnClickListener(l)

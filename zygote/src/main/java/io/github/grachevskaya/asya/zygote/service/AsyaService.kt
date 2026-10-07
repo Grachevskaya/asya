@@ -1,21 +1,20 @@
 package io.github.grachevskaya.asya.zygote.service
 
-import java.util.concurrent.atomic.AtomicInteger
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.FileObserver
+import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.provider.Settings
-import kotlin.concurrent.thread
+import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.common.CollectionUtils.removeIf
 import io.github.grachevskaya.asya.common.Constants
 import io.github.grachevskaya.asya.common.FilterHolder
-import android.os.FileObserver
-import android.os.IBinder
 import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.RiskyPackageUtils
 import io.github.grachevskaya.asya.common.Utils.binderLocalScope
@@ -26,12 +25,10 @@ import io.github.grachevskaya.asya.common.Utils.generateRandomString
 import io.github.grachevskaya.asya.common.Utils.getInstalledApplicationsCompat
 import io.github.grachevskaya.asya.common.Utils.getPackageInfoCompat
 import io.github.grachevskaya.asya.common.Utils.isSystemApp
-import io.github.grachevskaya.asya.common.settings_presets.ReplacementItem
-import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.zygote.hook.ActivityHook
 import io.github.grachevskaya.asya.zygote.hook.AppDataIsolationHook
+import io.github.grachevskaya.asya.zygote.hook.BridgeHook
 import io.github.grachevskaya.asya.zygote.hook.BroadcastHook
-import io.github.grachevskaya.asya.zygote.hook.ContentProviderHook
 import io.github.grachevskaya.asya.zygote.hook.IFrameworkHook
 import io.github.grachevskaya.asya.zygote.hook.PackageTransactionHook
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget29
@@ -39,6 +36,7 @@ import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget30
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget31
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget33
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget34
+import io.github.grachevskaya.asya.zygote.hook.ShutdownHook
 import io.github.grachevskaya.asya.zygote.hook.UserChangeHook
 import io.github.grachevskaya.asya.zygote.hook.ZygoteHook
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getDefaultBrowser
@@ -48,35 +46,65 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logE
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.Logcat.logWithLevel
-import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.findApp
-import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.getLaunchIntentForPackageAsUser
 import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.isConflictingModuleInstalled
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.ensureFileIsRW
 import io.github.grachevskaya.asya.zygote.util.UserManagerUtils
-import rikka.hidden.compat.ActivityManagerApis
+import io.github.grachevskaya.asya.zygote.util.ActivityManagerUtils
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.reflect.Modifier
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlin.io.path.Path
 
-class AsyaService(val pms: IPackageManager, val pmn: Any?) :
-    io.github.grachevskaya.asya.common.ServiceBridge.Host {
-
+class AsyaService(
+    val pms: IPackageManager,
+    val pmn: Any?,
+) : io.github.grachevskaya.asya.common.ServiceBridge.Host {
     // ---- ServiceBridge.Host: the in-process answers the manager asks for ----
 
     override val isAlive: Boolean get() = true
 
     /** Live from the kernel, not the last file write. One netlink round trip, cheap. */
-    override fun kernelStatus(): Map<String, String> =
-        runCatching { KernelPolicy.requestStatus() }.getOrDefault(emptyMap())
+    override fun kernelStatus(): Map<String, String> = runCatching { KernelPolicy.requestStatus() }.getOrDefault(emptyMap())
 
     /** Package install/remove/replace: the table follows through the ordinary push path. */
     override fun onPackagesChanged() {
         invalidatePackageCaches()
         pushPolicyToKernel()
+        announcePackagesChanged()
     }
+
+    /**
+     * The manager's notice, and the reason it is a broadcast.
+     *
+     * The manager runs in the host and this service runs in system_server, so a static reference
+     * cannot reach it: what crosses a process boundary here is an intent. It is sent from the
+     * transaction hook and not left to the package broadcast, which can arrive while the apk
+     * directory is still being swapped -- the read the manager then takes is of the transient
+     * state. Addressed at the host and registered-only, so no other app is woken by it.
+     */
+    private fun announcePackagesChanged() {
+        val binder = managerBinder ?: return
+        runCatching { io.github.grachevskaya.asya.common.ServiceBridge.notifyPackagesChanged(binder) }
+            .onFailure { logW(TAG) { "Could not announce the package change: $it" } }
+    }
+
+    /** The manager's binder, from the handshake: the one way into its process from here. */
+    @Volatile
+    private var managerBinder: android.os.IBinder? = null
+
+    fun onManagerBinder(binder: android.os.IBinder) {
+        managerBinder = binder
+        logI(TAG) { "The manager is on the bridge" }
+    }
+
+    /** The live counter, which is what the manager reads while this service is in the process. */
+    override fun filterCount(): Int = dataHolder.filterHolder.totalCount
+
+    override fun filterStatsJson(): String? = getDetailedFilterStats()
 
     /** Everything resolved from the package list, dropped so the next pass resolves it again. */
     private fun invalidatePackageCaches() {
@@ -85,9 +113,7 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         browserCache.clear()
     }
 
-    override fun configJson(): String? =
-        runCatching { configFile.takeIf { it.isFile }?.readText() }.getOrNull()
-
+    override fun configJson(): String? = runCatching { configFile.takeIf { it.isFile }?.readText() }.getOrNull()
 
     companion object {
         private const val TAG = "Asya-Service"
@@ -108,6 +134,7 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
          * The host's own private directory, and the name this module keeps inside it. Nothing
          * enumerates here: no service to find, no package to list.
          */
+
         /**
          * Where the state lives: a random name under /data/misc, which is upstream's arrangement and
          * the one that works -- the service has written here since the Zygisk rewrite, and the tail
@@ -156,12 +183,13 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         private set
 
     init {
-        managerWorkMode = if (pms.isConflictingModuleInstalled()) {
-            logE(TAG) { "Conflicting module detected, skipping hook" }
-            Constants.MANAGER_WORK_MODE_NO_HOOKS
-        } else {
-            Constants.MANAGER_WORK_MODE_LOADING
-        }
+        managerWorkMode =
+            if (pms.isConflictingModuleInstalled()) {
+                logE(TAG) { "Conflicting module detected, skipping hook" }
+                Constants.MANAGER_WORK_MODE_NO_HOOKS
+            } else {
+                Constants.MANAGER_WORK_MODE_LOADING
+            }
 
         /*
          * Every step is guarded: this constructor runs inside system_server, and a throw from here
@@ -179,7 +207,6 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         }
 
         runCatching { pollKernelStatus() }.onFailure { logD(TAG) { "No kernel status poll: ${it.message}" } }
-
 
         if (managerWorkMode != Constants.MANAGER_WORK_MODE_NO_HOOKS) {
             installHooks()
@@ -211,13 +238,15 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      */
     private fun searchDataDir() {
         val root = File(HOST_DATA_ROOT)
-        val dir = root.listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
-            ?.firstOrNull()
-            ?: carryStateOver(root)
-            ?: File(root, DIR_PREFIX + generateRandomString(16, ('a'..'z').toList())).apply {
-                mkdirs()
-                logI(TAG) { "Made the state directory: $path" }
-            }
+        val dir =
+            root
+                .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
+                ?.firstOrNull()
+                ?: carryStateOver(root)
+                ?: File(root, DIR_PREFIX + generateRandomString(16, ('a'..'z').toList())).apply {
+                    mkdirs()
+                    logI(TAG) { "Made the state directory: $path" }
+                }
 
         if (dir == null) {
             logE(TAG) { "The host has not made \$HOST_DATA_ROOT/\$DIR_PREFIX* yet" }
@@ -254,9 +283,10 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
 
     fun saveModuleStatus() {
         try {
-            val json = mapOf(
-                "workMode" to managerWorkMode,
-            )
+            val json =
+                mapOf(
+                    "workMode" to managerWorkMode,
+                )
 
             ensureFileIsRW(moduleStatusFile, true)
             moduleStatusFile.writeText(encoder.encodeToString(json))
@@ -281,6 +311,7 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      * This is also the place the kernel half will be told about the new policy, once that is
      * wired: a reload is exactly when the pairs change.
      */
+
     /**
      * The kernel half wants the same decisions this service makes, as (caller, target) uids: a
      * process whose uid is the caller must not see the target uid at all. The pairs are computed
@@ -296,8 +327,12 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      * at the same time interleave their records. A request that arrives while one runs sets a flag
      * and the running pass takes it once more when it finishes.
      */
-    private val policyPushRunning = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val policyPushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val policyPushRunning =
+        java.util.concurrent.atomic
+            .AtomicBoolean(false)
+    private val policyPushQueued =
+        java.util.concurrent.atomic
+            .AtomicBoolean(false)
 
     private fun pushPolicyToKernel() {
         if (!policyPushRunning.compareAndSet(false, true)) {
@@ -330,10 +365,13 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
                 val apks = buildApkTable(pairs)
                 logIsolationClasses()
                 logI(TAG) { "Apks for the kernel: ${apks.size}" }
-                publishStatusToKernelSu(pairs.size, apks.size,
+                publishStatusToKernelSu(
+                    pairs.size,
+                    apks.size,
                     "none=" + isolationCounts[ISOLATION_NONE] +
                         " app=" + isolationCounts[ISOLATION_APP] +
-                        " native=" + isolationCounts[ISOLATION_NATIVE])
+                        " native=" + isolationCounts[ISOLATION_NATIVE],
+                )
                 KernelPolicy.pushApks(apks)
 
                 saveKernelStatus()
@@ -387,6 +425,7 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      * so the two tables cannot disagree about which apps are in play -- and a template applied to an
      * app puts its uid into those pairs, which is what makes the app's apk watchable.
      */
+
     /**
      * Tries the apk table again a little later.
      *
@@ -470,8 +509,11 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      * attribute" and which exists only from API 37 -- so Android 12-16 always lands on the
      * apk-only class, where the child must open the apk to load its dex anyway.
      */
-    private fun isolationClass(packageName: String, userId: Int): Int {
-        val flags = (0x1 or 0x2 or 0x4 or 0x8).toLong()   /* GET_ACTIVITIES | RECEIVERS | SERVICES | PROVIDERS ✓ */
+    private fun isolationClass(
+        packageName: String,
+        userId: Int,
+    ): Int {
+        val flags = (0x1 or 0x2 or 0x4 or 0x8).toLong() // GET_ACTIVITIES | RECEIVERS | SERVICES | PROVIDERS ✓
         val info = pms.getPackageInfoCompat(packageName, flags, userId) ?: return ISOLATION_NATIVE
 
         /*
@@ -481,14 +523,17 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
          *    inside their processes … Introduced in API 37."
          *
          */
-        val isolated = 0x2   /* FLAG_ISOLATED_PROCESS ✓ */
-        val nativeBit = 0x20 /* FLAG_NATIVE_SERVICE ✓ */
+        val isolated = 0x2 // FLAG_ISOLATED_PROCESS ✓
+        val nativeBit = 0x20 // FLAG_NATIVE_SERVICE ✓
+
         fun isolated(flag: Int) = (flag and isolated) != 0
+
         fun nativeSvc(flag: Int) = (flag and nativeBit) != 0
 
         val services = info.services.orEmpty()
-        val any = services.any { isolated(it.flags) } ||
-            info.providers?.any { isolated(it.flags) } == true
+        val any =
+            services.any { isolated(it.flags) } ||
+                info.providers?.any { isolated(it.flags) } == true
         if (!any) {
             isolationCounts[ISOLATION_NONE]++
             return ISOLATION_NONE
@@ -506,8 +551,9 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
          * that plainly declare a native service library -- uidscan declares libnatsvc.so -- were
          * left out; the declaration is the second source and it is what makes the difference.
          */
-        val nativeByFlags = serviceFlagsFromModel(packageName)
-            ?.any { isolated(it) && nativeSvc(it) } == true
+        val nativeByFlags =
+            serviceFlagsFromModel(packageName)
+                ?.any { isolated(it) && nativeSvc(it) } == true
         val nativeByDecl = !declaredNativeLibNames(packageName).isNullOrEmpty()
         val kind = if (nativeByFlags || nativeByDecl) ISOLATION_NATIVE else ISOLATION_APP
         isolationCounts[kind]++
@@ -528,114 +574,120 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      *
      *
      */
+
     /**
      * Native library names this package declares. The parsed model holds them as
      * Map<String, PackageManager.Property> -- key is the property name, the value carries
      * the string -- for the package and for each service. Anything unreadable returns null
      * and the caller falls back to every .so of the app.
      */
-    private fun declaredNativeLibNames(packageName: String): Set<String>? = runCatching {
-        val packages = packageModel() ?: return@runCatching null
-        packagesFoundForLog = packages.size
-        val androidPackage = packages[packageName]
-        androidPackageForLog = androidPackage ?: return@runCatching null
-
-        if (!diagnosedNativeModel) {
-            diagnosedNativeModel = true
-            runCatching {
-                val cls = androidPackage.javaClass
-                val methods = cls.methods.map { it.name }.filter {
-                    it.contains("ropert", true) || it.contains("ative", true) ||
-                        it.contains("ervice", true) || it.contains("ygote", true)
-                }.sorted().take(40)
-                val fields = cls.declaredFields.map { it.name }.filter {
-                    it.contains("ropert", true) || it.contains("ative", true) ||
-                        it.contains("ervice", true) || it.contains("ygote", true)
-                }.sorted().take(40)
-                logI(TAG) {
-                    "Native-model diagnosis: class=" + cls.name +
-                        " methods=" + methods +
-                        " fields=" + fields
-                }
-            }.onFailure { logW(TAG, it) { "Native-model diagnosis failed" } }
-        }
-
-        val names = LinkedHashSet<String>()
-        val wanted = setOf(
-            "android.app.PROPERTY_NATIVE_SERVICE_LIBRARY_NAME",
-            "android:zygotePreloadNativeLib",
-            "zygotePreloadNativeLib",
-        )
-
-        fun harvest(properties: Any?) {
-            val map = properties as? Map<*, *> ?: return
-            map.forEach { key, value ->
-                val name = key as? String ?: return@forEach
-                if (name !in wanted) return@forEach
-                val text = runCatching {
-                    value?.javaClass?.getMethod("getString")?.invoke(value) as? String
-                }.getOrNull() ?: (value as? String)
-                if (propertyKeysForLog.size < 12) propertyKeysForLog.add(name)
-                if (!text.isNullOrEmpty()) names.add(text)
-            }
-        }
-
-        for (accessor in arrayOf("getProperties", "getPackageProperties", "getManifestProperties")) {
-            runCatching {
-                harvest(androidPackage.javaClass.getMethod(accessor).invoke(androidPackage))
-            }
-        }
+    private fun declaredNativeLibNames(packageName: String): Set<String>? =
         runCatching {
-            var cls: Class<*>? = androidPackage.javaClass
-            var services: Any? = null
-            while (cls != null && services == null) {
-                services = runCatching { cls!!.getMethod("getServices").invoke(androidPackage) }.getOrNull()
-                cls = cls.superclass
-            }
-            (services as? Collection<*>)?.forEach { service ->
-                if (service == null) return@forEach
+            val packages = packageModel() ?: return@runCatching null
+            packagesFoundForLog = packages.size
+            val androidPackage = packages[packageName]
+            androidPackageForLog = androidPackage ?: return@runCatching null
+
+            if (!diagnosedNativeModel) {
+                diagnosedNativeModel = true
                 runCatching {
-                    harvest(service.javaClass.getMethod("getProperties").invoke(service))
+                    val cls = androidPackage.javaClass
+                    val methods =
+                        cls.methods
+                            .map { it.name }
+                            .filter {
+                                it.contains("ropert", true) || it.contains("ative", true) ||
+                                    it.contains("ervice", true) || it.contains("ygote", true)
+                            }.sorted()
+                            .take(40)
+                    val fields =
+                        cls.declaredFields
+                            .map { it.name }
+                            .filter {
+                                it.contains("ropert", true) || it.contains("ative", true) ||
+                                    it.contains("ervice", true) || it.contains("ygote", true)
+                            }.sorted()
+                            .take(40)
+                    logI(TAG) {
+                        "Native-model diagnosis: class=" + cls.name +
+                            " methods=" + methods +
+                            " fields=" + fields
+                    }
+                }.onFailure { logW(TAG, it) { "Native-model diagnosis failed" } }
+            }
+
+            val names = LinkedHashSet<String>()
+            val wanted =
+                setOf(
+                    "android.app.PROPERTY_NATIVE_SERVICE_LIBRARY_NAME",
+                    "android:zygotePreloadNativeLib",
+                    "zygotePreloadNativeLib",
+                )
+
+            fun harvest(properties: Any?) {
+                val map = properties as? Map<*, *> ?: return
+                map.forEach { key, value ->
+                    val name = key as? String ?: return@forEach
+                    if (name !in wanted) return@forEach
+                    val text =
+                        runCatching {
+                            value?.javaClass?.getMethod("getString")?.invoke(value) as? String
+                        }.getOrNull() ?: (value as? String)
+                    if (propertyKeysForLog.size < 12) propertyKeysForLog.add(name)
+                    if (!text.isNullOrEmpty()) names.add(text)
                 }
             }
-        }
-        if (names.isNotEmpty()) {
-            logI(TAG) { "Declared native libs for " + packageName + ": " + names }
-            return@runCatching names
-        }
 
-        if (!declaredLogOnce) {
-            declaredLogOnce = true
-            logI(TAG) {
-                "Declared read failed for " + packageName +
-                    ": pmsClass=" + pms.javaClass.name +
-                    ", packagesFound=" + (packagesFoundForLog) +
-                    ", packageFound=" + (androidPackageForLog != null) +
-                    ", packageKeys=" + (propertyKeysForLog.take(6))
+            for (accessor in arrayOf("getProperties", "getPackageProperties", "getManifestProperties")) {
+                runCatching {
+                    harvest(androidPackage.javaClass.getMethod(accessor).invoke(androidPackage))
+                }
             }
-        }
-        null
-    }.getOrNull()
+            runCatching {
+                var cls: Class<*>? = androidPackage.javaClass
+                var services: Any? = null
+                while (cls != null && services == null) {
+                    services = runCatching { cls!!.getMethod("getServices").invoke(androidPackage) }.getOrNull()
+                    cls = cls.superclass
+                }
+                (services as? Collection<*>)?.forEach { service ->
+                    if (service == null) return@forEach
+                    runCatching {
+                        harvest(service.javaClass.getMethod("getProperties").invoke(service))
+                    }
+                }
+            }
+            if (names.isNotEmpty()) {
+                logI(TAG) { "Declared native libs for " + packageName + ": " + names }
+                return@runCatching names
+            }
+
+            if (!declaredLogOnce) {
+                declaredLogOnce = true
+                logI(TAG) {
+                    "Declared read failed for " + packageName +
+                        ": pmsClass=" + pms.javaClass.name +
+                        ", packagesFound=" + (packagesFoundForLog) +
+                        ", packageFound=" + (androidPackageForLog != null) +
+                        ", packageKeys=" + (propertyKeysForLog.take(6))
+                }
+            }
+            null
+        }.getOrNull()
 
     /**
      *
      *
      *
      */
-    private fun declaresNativeIsolation(packageName: String, userId: Int): Boolean {
-        if (Build.VERSION.SDK_INT < 37 && !File("/system/bin/zygote_next").exists()) {
-            return false
-        }
-        return true
-    }
-
     /**
      *
      */
-    private fun appNativePreloadLib(app: ApplicationInfo): String? = runCatching {
-        val field = ApplicationInfo::class.java.getField("zygotePreloadNativeLib")
-        (field.get(app) as? String)?.takeIf { it.isNotEmpty() }
-    }.getOrNull()
+    private fun appNativePreloadLib(app: ApplicationInfo): String? =
+        runCatching {
+            val field = ApplicationInfo::class.java.getField("zygotePreloadNativeLib")
+            (field.get(app) as? String)?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
 
     /**
      * The package table, resolved once and kept: resolving it per lookup costs seconds across
@@ -653,51 +705,69 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
          * -- so this$0 is the service instance and mPackages is its package table. No vendor
          * class, no alternative path: if this is not it, the module says so and stops guessing.
          */
-        val found = runCatching {
-            val service = pms.javaClass.getDeclaredField("this$0")
-                .apply { isAccessible = true }.get(pms)
-                ?: return@runCatching null
-            service.javaClass.getDeclaredField("mPackages")
-                .apply { isAccessible = true }.get(service) as? Map<*, *>
-        }.getOrNull()
-        if (found != null) cachedPackageModel = found else logW(TAG) { "No package table: every native library declaration will read as empty" }
+        val found =
+            runCatching {
+                val service =
+                    pms.javaClass
+                        .getDeclaredField("this$0")
+                        .apply { isAccessible = true }
+                        .get(pms)
+                        ?: return@runCatching null
+                service.javaClass
+                    .getDeclaredField("mPackages")
+                    .apply { isAccessible = true }
+                    .get(service) as? Map<*, *>
+            }.getOrNull()
+        if (found !=
+            null
+        ) {
+            cachedPackageModel = found
+        } else {
+            logW(TAG) { "No package table: every native library declaration will read as empty" }
+        }
         return found
     }
 
     private var cachedPackageModel: Map<*, *>? = null
 
-    private fun serviceFlagsFromModel(packageName: String): List<Int>? = runCatching {
-        val map = packageModel() ?: return@runCatching null
-        var cls: Class<*>?
-        val pkg = map[packageName] ?: return@runCatching null
+    private fun serviceFlagsFromModel(packageName: String): List<Int>? =
+        runCatching {
+            val map = packageModel() ?: return@runCatching null
+            var cls: Class<*>?
+            val pkg = map[packageName] ?: return@runCatching null
 
-        val list = ArrayList<Int>()
-        var services: Any? = null
-        cls = pkg.javaClass
-        while (cls != null && services == null) {
-            services = runCatching { cls!!.getMethod("getServices").invoke(pkg) }.getOrNull()
-            cls = cls.superclass
-        }
-        (services as? Collection<*>)?.forEach { component ->
-            if (component == null) return@forEach
-            val flags = runCatching {
-                component.javaClass.getMethod("getFlags").invoke(component) as? Int
-            }.getOrNull()
-            if (flags != null) list.add(flags)
-        }
-        if (list.isEmpty()) null else list
-    }.getOrNull()
+            val list = ArrayList<Int>()
+            var services: Any? = null
+            cls = pkg.javaClass
+            while (cls != null && services == null) {
+                services = runCatching { cls!!.getMethod("getServices").invoke(pkg) }.getOrNull()
+                cls = cls.superclass
+            }
+            (services as? Collection<*>)?.forEach { component ->
+                if (component == null) return@forEach
+                val flags =
+                    runCatching {
+                        component.javaClass.getMethod("getFlags").invoke(component) as? Int
+                    }.getOrNull()
+                if (flags != null) list.add(flags)
+            }
+            if (list.isEmpty()) null else list
+        }.getOrNull()
 
     /**
      */
     private fun waitForUserUnlocked(timeoutMs: Long) {
         val deadline = System.currentTimeMillis() + timeoutMs
 
-        val um: android.os.UserManager? = runCatching {
-            val app = Class.forName("android.app.AppGlobals")
-                .getMethod("getInitialApplication").invoke(null) as? android.content.Context
-            app?.getSystemService(android.os.UserManager::class.java)
-        }.getOrNull()
+        val um: android.os.UserManager? =
+            runCatching {
+                val app =
+                    Class
+                        .forName("android.app.AppGlobals")
+                        .getMethod("getInitialApplication")
+                        .invoke(null) as? android.content.Context
+                app?.getSystemService(android.os.UserManager::class.java)
+            }.getOrNull()
 
         while (System.currentTimeMillis() < deadline) {
             val unlocked = runCatching { um?.isUserUnlocked ?: true }.getOrDefault(true)
@@ -714,27 +784,36 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
     /**
      *
      */
-    private fun publishStatusToKernelSu(pairs: Int, apks: Int, isolated: String) {
-        val kernelUp = runCatching {
-            jsonDecode(kernelFile.takeIf { it.isFile }?.readText() ?: "")["state"] == "loaded"
-        }.getOrDefault(false)
+    private fun publishStatusToKernelSu(
+        pairs: Int,
+        apks: Int,
+        isolated: String,
+    ) {
+        val kernelUp =
+            runCatching {
+                jsonDecode(kernelFile.takeIf { it.isFile }?.readText() ?: "")["state"] == "loaded"
+            }.getOrDefault(false)
         val serviceUp = apks > 0 || pairs > 0
-        val description = buildString {
-            append(if (serviceUp) "userspace service running" else "userspace service not ready")
-            append(" · ")
-            append(if (kernelUp) "kernel module loaded" else "kernel module not loaded")
-        }
+        val description =
+            buildString {
+                append(if (serviceUp) "userspace service running" else "userspace service not ready")
+                append(" · ")
+                append(if (kernelUp) "kernel module loaded" else "kernel module not loaded")
+            }
 
         logI(TAG) { "Status: " + description + " · apk=" + apks + " · policy=" + pairs / 2 + " · " + isolated }
-
     }
 
-    private fun jsonDecode(text: String): Map<String, String> = runCatching {
-        Regex("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"").findAll(text)
-            .associate { it.groupValues[1] to it.groupValues[2] }
-    }.getOrDefault(emptyMap())
+    private fun jsonDecode(text: String): Map<String, String> =
+        runCatching {
+            Regex("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"")
+                .findAll(text)
+                .associate { it.groupValues[1] to it.groupValues[2] }
+        }.getOrDefault(emptyMap())
 
-    private fun buildApkTable(@Suppress("UNUSED_PARAMETER") pairs: IntArray): List<Pair<Int, String>> {
+    private fun buildApkTable(
+        @Suppress("UNUSED_PARAMETER") pairs: IntArray,
+    ): List<Pair<Int, String>> {
         /*
          * Every installed apk, not only the ones the rules name.
          *
@@ -799,25 +878,29 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
                          * means the framework default, libmain.so; if that resolves to nothing
                          * on disk, every library of the app is hooked instead.
                          */
-                        val declaredNames = LinkedHashSet<String>().apply {
-                            declaredNativeLibNames(app.packageName)?.let { addAll(it) }
-                            appNativePreloadLib(application)?.let { add(it) }
-                            if (isEmpty()) add("libmain.so")
-                        }
+                        val declaredNames =
+                            LinkedHashSet<String>().apply {
+                                declaredNativeLibNames(app.packageName)?.let { addAll(it) }
+                                appNativePreloadLib(application)?.let { add(it) }
+                                if (isEmpty()) add("libmain.so")
+                            }
                         val base = application.nativeLibraryDir?.let { File(it) }
                         val closure = base?.let { ElfDeps.closure(declaredNames, it) }
                         logI(TAG) {
                             "Native app " + app.packageName + " declares " + declaredNames +
                                 "; elf closure=" + (closure?.size ?: -1)
                         }
-                        val existing = closure?.mapNotNull { n ->
-                            base?.let { File(it, n) }?.takeIf { f -> f.isFile }?.absolutePath
-                        }.orEmpty()
-                        val paths = if (existing.isNotEmpty()) {
-                            existing
-                        } else {
-                            base?.listFiles()?.map { it.absolutePath } ?: emptyList()
-                        }
+                        val existing =
+                            closure
+                                ?.mapNotNull { n ->
+                                    base?.let { File(it, n) }?.takeIf { f -> f.isFile }?.absolutePath
+                                }.orEmpty()
+                        val paths =
+                            if (existing.isNotEmpty()) {
+                                existing
+                            } else {
+                                base?.listFiles()?.map { it.absolutePath } ?: emptyList()
+                            }
 
                         paths.forEach { path ->
                             if (path.endsWith(".so") && offered.add(path)) table.add(app.uid to path)
@@ -879,9 +962,10 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
             repeat(150) {
                 Thread.sleep(2_000)
 
-                val dir = File(HOST_DATA_ROOT)
-                    .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
-                    ?.firstOrNull() ?: return@repeat
+                val dir =
+                    File(HOST_DATA_ROOT)
+                        .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
+                        ?.firstOrNull() ?: return@repeat
 
                 runCatching { searchDataDir() }
                 runCatching { loadConfig() }
@@ -907,9 +991,10 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      */
     private fun carryStateOver(root: File): File? {
         try {
-            val previous = File(PREVIOUS_HOST_DATA_ROOT)
-                .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
-                ?.maxByOrNull { it.lastModified() } ?: return null
+            val previous =
+                File(PREVIOUS_HOST_DATA_ROOT)
+                    .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
+                    ?.maxByOrNull { it.lastModified() } ?: return null
 
             val source = File(previous, "config.json")
             if (!source.isFile || source.length() == 0L) return null
@@ -934,21 +1019,25 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         val dir = configFile.parentFile ?: return
         val name = configFile.name
 
-        val observer = object : FileObserver(
-            dir.absolutePath,
-            CREATE or MOVED_TO or CLOSE_WRITE or DELETE or ATTRIB,
-        ) {
-            override fun onEvent(event: Int, path: String?) {
-                if (path != name) return
+        val observer =
+            object : FileObserver(
+                dir.absolutePath,
+                CREATE or MOVED_TO or CLOSE_WRITE or DELETE or ATTRIB,
+            ) {
+                override fun onEvent(
+                    event: Int,
+                    path: String?,
+                ) {
+                    if (path != name) return
 
-                logI(TAG) { "The configuration changed on disk, reloading" }
-                try {
-                    loadConfig()
-                } catch (cause: Throwable) {
-                    logW(TAG, cause) { "Could not reload the configuration" }
+                    logI(TAG) { "The configuration changed on disk, reloading" }
+                    try {
+                        loadConfig()
+                    } catch (cause: Throwable) {
+                        logW(TAG, cause) { "Could not reload the configuration" }
+                    }
                 }
             }
-        }
 
         observer.startWatching()
         configObserver = observer
@@ -969,14 +1058,15 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
             return
         }
 
-        val loading = try {
-            val json = configFile.readText()
-            JsonConfig.parse(json)
-        } catch (cause: Throwable) {
-            logW(TAG, cause) { "Failed to parse config json, skip it" }
+        val loading =
+            try {
+                val json = configFile.readText()
+                JsonConfig.parse(json)
+            } catch (cause: Throwable) {
+                logW(TAG, cause) { "Failed to parse config json, skip it" }
 
-            config
-        }
+                config
+            }
 
         if (loading.configVersion != BuildConfig.CONFIG_VERSION) {
             logW(TAG) { "Config version mismatch, need to reload" }
@@ -998,21 +1088,21 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
             logI(TAG) { "Filter count file not found" }
             return
         }
-        val loading = runCatching {
-            val json = filterCountFile.readText()
-            FilterHolder.parse(json)
-        }.getOrElse {
-            logE(TAG, it) { "Failed to parse filter count" }
-            return
-        }
+        val loading =
+            runCatching {
+                val json = filterCountFile.readText()
+                FilterHolder.parse(json)
+            }.getOrElse {
+                logE(TAG, it) { "Failed to parse filter count" }
+                return
+            }
         dataHolder.filterHolder = loading
         logI(TAG) { "Filter counts loaded" }
     }
 
     private fun installHooks() {
         pms.allPackages.filterTo(systemApps) {
-            pms.getPackageInfoCompat(
-                it, 0L, 0)?.applicationInfo?.isSystemApp() ?: false
+            pms.getPackageInfoCompat(it, 0L, 0)?.applicationInfo?.isSystemApp() ?: false
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -1040,68 +1130,63 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         // A user being added or removed is not a package broadcast, and the apk table is built per
         // user -- so this is the event that keeps the kernel's set of apks the set of installed ones.
         frameworkHooks.add(UserChangeHook())
-        frameworkHooks.add(ContentProviderHook())
         frameworkHooks.add(ZygoteHook())
+
+        // A power off is the last moment the throttled files can be brought up to date: what the
+        // counter has counted since its last write lives in memory until this runs.
+        frameworkHooks.add(ShutdownHook())
+
+        // The bridge: the host's process observer registration is what carries it across.
+        frameworkHooks.add(BridgeHook())
 
         frameworkHooks.forEach(IFrameworkHook::load)
         logI(TAG) { "Hooks installed" }
     }
 
-    fun increasePMFilterCount(callingUid: Int?, amount: Int = 1) = dataHolder.increaseFilterCount(
-        callingUid, amount, FilterHolder.FilterType.PACKAGE_MANAGER, ::writeFilterCount
+    fun increasePMFilterCount(
+        callingUid: Int?,
+        amount: Int = 1,
+    ) = dataHolder.increaseFilterCount(
+        callingUid,
+        amount,
+        FilterHolder.FilterType.PACKAGE_MANAGER,
+        ::writeFilterCount,
     )
 
-    fun increasePMFilterCount(caller: String?, amount: Int = 1) = dataHolder.increaseFilterCount(
-        caller, amount, FilterHolder.FilterType.PACKAGE_MANAGER, ::writeFilterCount
+    fun increasePMFilterCount(
+        caller: String?,
+        amount: Int = 1,
+    ) = dataHolder.increaseFilterCount(
+        caller,
+        amount,
+        FilterHolder.FilterType.PACKAGE_MANAGER,
+        ::writeFilterCount,
     )
 
-    fun increaseALFilterCount(caller: String?, amount: Int = 1) = dataHolder.increaseFilterCount(
-        caller, amount, FilterHolder.FilterType.ACTIVITY_LAUNCH, ::writeFilterCount
-    )
-
-    fun increaseInstallerFilterCount(caller: String?, amount: Int = 1) = dataHolder.increaseFilterCount(
-        caller, amount, FilterHolder.FilterType.INSTALLER, ::writeFilterCount
-    )
-
-    fun increaseSettingsFilterCount(caller: String?, amount: Int = 1) = dataHolder.increaseFilterCount(
-        caller, amount, FilterHolder.FilterType.SETTINGS, ::writeFilterCount
-    )
-
-    fun increaseOthersFilterCount(caller: String?, amount: Int = 1) = dataHolder.increaseFilterCount(
-        caller, amount, FilterHolder.FilterType.OTHERS, ::writeFilterCount
+    fun increaseALFilterCount(
+        caller: String?,
+        amount: Int = 1,
+    ) = dataHolder.increaseFilterCount(
+        caller,
+        amount,
+        FilterHolder.FilterType.ACTIVITY_LAUNCH,
+        ::writeFilterCount,
     )
 
     fun isHookEnabled(packageName: String?) = config.scope.containsKey(packageName)
 
-    fun isAnySettingsReplacementsEnabled(packageName: String?) = config.scope[packageName]?.let {
-        it.applySettingTemplates.isNotEmpty()
-    } ?: false
+    fun isAppDataIsolationExcluded(packageName: String?) = config.scope[packageName]?.excludeVoldIsolation ?: false
 
-    fun isAppDataIsolationExcluded(packageName: String?) =
-        config.scope[packageName]?.excludeVoldIsolation ?: false
+    fun isAppInGMSIgnoredPackages(
+        caller: String,
+        query: String,
+    ) = (caller in Constants.gmsPackages) && RiskyPackageUtils.instance.appHasGMSConnection(query)
 
-    fun getSpoofedSetting(caller: String?, name: String?, database: String): ReplacementItem? {
-        if (caller == null || name == null) return null
-
-        val templates = getEnabledSettingsTemplates(caller)
-        val replacement = config.settingsTemplates.firstNotNullOfOrNull { (key, value) ->
-            if (key in templates) value.settingsList.firstOrNull {
-                it.name == name && it.database == database
-            } else null
-        }
-        if (replacement != null) return replacement
-
-        return null
-    }
-
-    fun getEnabledSettingsTemplates(caller: String?) =
-        config.scope[caller]?.applySettingTemplates ?: setOf()
-
-
-    fun isAppInGMSIgnoredPackages(caller: String, query: String) =
-        (caller in Constants.gmsPackages) && RiskyPackageUtils.instance.appHasGMSConnection(query)
-
-    fun shouldHide(caller: String?, query: String?, userId: Int): Boolean {
+    fun shouldHide(
+        caller: String?,
+        query: String?,
+        userId: Int,
+    ): Boolean {
         if (caller == null || query == null) return false
         if (caller in Constants.packagesShouldNotHide || query in Constants.packagesShouldNotHide) return false
         if (caller == query) return false
@@ -1157,10 +1242,11 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         return value
     }
 
-    fun getRestrictedZygotePermissions(caller: String?) =
-        config.scope[caller]?.restrictedZygotePermissions
-
-    fun shouldHideActivityLaunch(caller: String?, query: String?, userId: Int): Boolean {
+    fun shouldHideActivityLaunch(
+        caller: String?,
+        query: String?,
+        userId: Int,
+    ): Boolean {
         val appConfig = config.scope[caller]
         if (appConfig != null && shouldHide(caller, query, userId)) {
             return if (appConfig.invertActivityLaunchProtection) {
@@ -1171,33 +1257,6 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         }
 
         return false
-    }
-
-    fun shouldHideInstallationSource(caller: String?, query: String?, callingUser: Int): Int {
-        if (caller == null || query == null) return Constants.FAKE_INSTALLATION_SOURCE_DISABLED
-        val appConfig = config.scope[caller] ?: return Constants.FAKE_INSTALLATION_SOURCE_DISABLED
-        if (!appConfig.hideInstallationSource) return Constants.FAKE_INSTALLATION_SOURCE_DISABLED
-        logD(TAG) { "@shouldHideInstallationSource $caller: $query" }
-        if (caller == query && appConfig.excludeTargetInstallationSource) return Constants.FAKE_INSTALLATION_SOURCE_DISABLED
-
-        try {
-            val installed = pms.isPackageAvailable(query, callingUser)
-            logD(TAG) { "@shouldHideInstallationSource UID for $caller, ${callingUser}: $query, $installed" }
-            if (!installed) return Constants.FAKE_INSTALLATION_SOURCE_DISABLED // invalid package installation source request
-        } catch (cause: Throwable) {
-            logD(TAG, cause) { "@shouldHideInstallationSource UID error for $caller, $callingUser" }
-            return Constants.FAKE_INSTALLATION_SOURCE_DISABLED
-        }
-
-        return if (query in systemApps) {
-            if (appConfig.hideSystemInstallationSource) {
-                Constants.FAKE_INSTALLATION_SOURCE_SYSTEM
-            } else {
-                Constants.FAKE_INSTALLATION_SOURCE_DISABLED
-            }
-        } else {
-            Constants.FAKE_INSTALLATION_SOURCE_USER
-        }
     }
 
     fun ensureManagerWorkModeOK(silent: Boolean = false): Boolean {
@@ -1237,7 +1296,8 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
 
                 // remove filter counts for apps if they are not in config
                 dataHolder.filterHolder
-                    .filterCounts.removeIf { key, _ -> !config.scope.containsKey(key) }
+                    .filterCounts
+                    .removeIf { key, _ -> !config.scope.containsKey(key) }
                 logD(TAG) { "Config synced" }
             } catch (cause: Throwable) {
                 logE(TAG, cause) { "An error occurred while writing config" }
@@ -1247,13 +1307,27 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         writeFilterCount(true)
     }
 
+    private var lastFilterCountWrite = 0L
+
     private fun writeFilterCount(force: Boolean = false) {
         if (!ensureManagerWorkModeOK()) return
 
         synchronized(configLock) {
-            if (!force && dataHolder.filterHolder.totalCount % 100 != 0) {
+            val now = System.currentTimeMillis()
+            /*
+             * The file is the fallback, not the live answer: while the service is in the process
+             * the manager reads the counter through ServiceBridge. A write per filtered query is
+             * a file write per query, so the file is written on the hundred and otherwise at most
+             * once every two seconds -- and never immediately, because the write happens on the
+             * increment that follows the interval. The file therefore lags a burst, not a rule.
+             */
+            if (!force &&
+                dataHolder.filterHolder.totalCount % 100 != 0 &&
+                now - lastFilterCountWrite < 2_000L
+            ) {
                 return
             }
+            lastFilterCountWrite = now
 
             try {
                 ensureFileIsRW(filterCountFile, true)
@@ -1263,6 +1337,17 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
                 logE(TAG, cause) { "An error occurred while writing filter count" }
             }
         }
+    }
+
+    /**
+     * Everything kept behind a throttle, written once more. Called from the shutdown hook, where
+     * the alternative is losing the tail of the session: the file is the only copy that outlives
+     * this process. The log is not here because it is not buffered.
+     */
+    fun flushToDisk() {
+        runCatching { writeFilterCount(force = true) }
+            .onFailure { logE(TAG, it) { "Could not flush the filter count on shutdown" } }
+        logI(TAG) { "State flushed for shutdown: " + dataHolder.filterHolder.totalCount + " filtered" }
     }
 
     fun getServiceVersion() = BuildConfig.SERVICE_VERSION
@@ -1287,6 +1372,7 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
      */
     fun onUsersChanged() {
         pushPolicyToKernel()
+        announcePackagesChanged()
     }
 
     /**
@@ -1306,54 +1392,44 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
         if (changed) writeConfig(config.toString())
     }
 
-
-
-    fun forceStop(packageName: String?, userId: Int) {
+    fun forceStop(
+        packageName: String?,
+        userId: Int,
+    ) {
         binderLocalScope {
             try {
-                ActivityManagerApis.forceStopPackage(packageName, userId)
+                ActivityManagerUtils.forceStopPackage(requireNotNull(packageName), userId)
             } catch (cause: Throwable) {
                 logE(TAG, cause) { "An error occurred while force stopping the package" }
             }
         }
     }
 
-    fun log(level: Int, tag: String, message: String) {
+    fun log(
+        level: Int,
+        tag: String,
+        message: String,
+    ) {
         logWithLevel(level, tag) { message }
     }
 
-    fun getPackageNames(userId: Int) = binderLocalScope {
-        pms.getAllPackages().filter { packageName ->
-            pms.isPackageAvailable(packageName, userId)
-        }.toTypedArray()
-    }
+    fun getPackageNames(userId: Int) =
+        binderLocalScope {
+            pms
+                .getAllPackages()
+                .filter { packageName ->
+                    pms.isPackageAvailable(packageName, userId)
+                }.toTypedArray()
+        }
 
     fun getPackageInfo(
         packageName: String,
-        userId: Int
+        userId: Int,
     ) = binderLocalScope {
         pms.getPackageInfoCompat(packageName, 0L, userId)
     }
 
-    fun listAllSettings(databaseName: String): Array<String> {
-        val settingClass = when (databaseName) {
-            Constants.SETTINGS_GLOBAL -> Settings.Global::class.java
-            Constants.SETTINGS_SECURE -> Settings.Secure::class.java
-            Constants.SETTINGS_SYSTEM -> Settings.System::class.java
-            else -> throw IllegalArgumentException("Invalid database name $databaseName")
-        }
-
-        val readableVariables = settingClass.declaredFields.mapNotNull { field ->
-            if (Modifier.isStatic(field.modifiers) && field.type.simpleName == "String") field.get(null) as String else null
-        }
-
-        return readableVariables.sorted().toTypedArray()
-    }
-
     fun getLogFileLocation(): String = logFile.absolutePath
-
-
-
 
     fun getDetailedFilterStats() = dataHolder.filterHolder.toString()
 
@@ -1367,77 +1443,18 @@ class AsyaService(val pms: IPackageManager, val pmn: Any?) :
 
     fun getServiceVersionName() = BuildConfig.APP_VERSION_NAME
 
-    fun getLoadedHooks(): Array<String> {
-        val hookList = mutableListOf<String>()
-
-        for ((className, hookElements) in hooker.hooks) {
-            for (element in hookElements) {
-                hookList.add(
-                    JsonConfig.HookItem(
-                        className,
-                        element.methodName,
-                        element.argumentCount,
-                    ).toString()
-                )
-            }
-        }
-
-        return hookList.toTypedArray()
-    }
-
-    fun getManagerWorkMode() = managerWorkMode
-
-    fun startMainActivityAsUser(packageName: String, userId: Int) = binderLocalScope {
-        val pkgInfo = pms.getPackageInfoCompat(packageName, 0, userId)
-                ?: throw RemoteException("Cannot find package info for $packageName")
-
-        if (pkgInfo.applicationInfo?.enabled == true) {
-            val intentToLaunch = getLaunchIntentForPackageAsUser(packageName, userId)
-            if (intentToLaunch != null) {
-                ActivityManagerApis.startActivity(intentToLaunch, null, userId)
-            } else {
-                throw RemoteException("No main activity found to launch this app")
-            }
-        } else {
-            throw RemoteException("Package is disabled")
-        }
-    }
-
-    fun migrateData(packageName: String): Boolean {
-        if (packageName !in conflictedModules) return false
-
-        @SuppressLint("SdCardPath")
-        fun getDataFile(): File? {
-            // Android 11+
-            val dataMirror = File("/data_mirror/data_ce/null/0/$packageName/files/config.json")
-            if (dataMirror.exists()) return dataMirror
-
-            // Android 10-
-            val data = File("/data/data/$packageName/files/config.json")
-            if (data.exists()) return data
-
-            return null
-        }
-
-        val dataFile = getDataFile() ?: return false
-
-        val bytes = dataFile.readBytes()
-        configFile.writeBytes(bytes)
-
-        return true
-    }
-
     fun reloadConfigFromFile() {
         invalidatePackageCaches()
 
-        val loading = runCatching {
-            assert(configFile.exists())
-            val json = configFile.readText()
-            JsonConfig.parse(json)
-        }.getOrElse {
-            logE(TAG, it) { "Failed to parse config.json" }
-            return
-        }
+        val loading =
+            runCatching {
+                assert(configFile.exists())
+                val json = configFile.readText()
+                JsonConfig.parse(json)
+            }.getOrElse {
+                logE(TAG, it) { "Failed to parse config.json" }
+                return
+            }
 
         config = loading
     }

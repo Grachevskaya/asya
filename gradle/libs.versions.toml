@@ -1,12 +1,12 @@
 [versions]
 agp = "9.4.1"
 #noinspection NewerVersionAvailable
-kotlin = "2.3.+"
+kotlin = "2.4.20"
 material = "1.14.0"
 androidx-navigation = "2.10.2"
 vbpd = "2.0.4"
 r8_annotations = "v1.0.1"
-zygoteloader = "2a2160f"
+zygoteloader = "1.1.0"
 coil = "3.6.3"
 
 [plugins]
@@ -15,7 +15,7 @@ agp-lib = { id = "com.android.library", version.ref = "agp" }
 kotlin = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 nav-safeargs-kotlin = { id = "androidx.navigation.safeargs.kotlin", version.ref = "androidx-navigation" }
-com-github-aerathstuff-zygoteloader = { id = "com.github.aerath-stuff.ZygoteLoader", version.ref = "zygoteloader" }
+com-github-aerathstuff-zygoteloader = { id = "io.github.vova7878.ZygoteLoader", version.ref = "zygoteloader" }
 
 [libraries]
 androidx-appcompat-appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.8.0" }

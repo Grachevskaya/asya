@@ -29,6 +29,12 @@ import android.os.Handler;
  */
 public final class HostProcess {
 
+    /** The apk the module carries, kept from the moment it was opened. */
+    private static ManagerApk managerApk;
+
+    /** The manager's application is made once, and only once the user's storage is readable. */
+    private static volatile boolean managerApplicationStarted;
+
     /** How long to wait for the ActivityThread, at the rate it appears. */
 
     /**
@@ -57,10 +63,20 @@ public final class HostProcess {
                 return;
             }
 
+            managerApk = apk;
+
             ActivityThreadBridge.setInstrumentation(thread, new ManagerInstrumentation(original, apk));
             HostLog.i("Instrumentation replaced in %s", HostConstants.HOST_PACKAGE);
 
-            startManagerApplication(thread, apk);
+            // The bridge is offered from here: the manager's application is what answers on it, and
+            // this is the moment that application is about to exist.
+            HostBridge.INSTANCE.install();
+
+            if (isUserUnlocked(thread)) {
+                startManagerApplication(thread, apk);
+            } else {
+                waitForUnlock(thread, apk);
+            }
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not replace the instrumentation");
         }
@@ -72,12 +88,14 @@ public final class HostProcess {
      * preferences, its configuration, its locale.
      */
     private static void startManagerApplication(ActivityThread thread, ManagerApk apk) {
+        if (managerApplicationStarted) return;
+
         try {
             Application host = thread.getApplication();
             Class<?> appClass = apk.getClassLoader().loadClass("io.github.grachevskaya.asya.MyApp");
             Application application = (Application) appClass.getDeclaredConstructor().newInstance();
 
-            attachMethod(appClass).invoke(application, host);
+            attachMethod(appClass).invoke(application, hostedContext(apk, host));
 
             appClass.getMethod("onCreate").invoke(application);
 
@@ -98,10 +116,95 @@ public final class HostProcess {
              */
             registerManagerReceiver(thread);
 
+            managerApplicationStarted = true;
+
             HostLog.i("The manager's application is up");
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not start the manager's application");
         }
+    }
+
+    /**
+     * Whether the user's own storage is readable yet. This, and not the boot state or the uptime, is
+     * what the manager waits for: its own onCreate reads the host's credential-encrypted files, and
+     * those exist only after the key is in place. The property is the fallback, and it is the one
+     * init sets when user 0's credential-encrypted storage becomes available.
+     */
+    private static boolean isUserUnlocked(ActivityThread thread) {
+        try {
+            Context context = systemContext(thread);
+            android.os.UserManager users = context.getSystemService(android.os.UserManager.class);
+            if (users != null) return users.isUserUnlocked();
+        } catch (Throwable ignored) {
+            // The property below answers instead.
+        }
+
+        return "1".equals(android.os.SystemProperties.get("sys.user.0.ce_available"));
+    }
+
+    /**
+     * The manager's application is not created before the user's storage is readable.
+     *
+     * Its own onCreate reads the host's credential-encrypted files, and on a locked device that read
+     * is one the boot waits on: this ran at bind time, on the host's main thread, during boot -- the
+     * delay before the lockscreen was this. The instrumentation is replaced either way, because that
+     * has to happen before the first activity of the host is created; only the application waits.
+     */
+    private static void waitForUnlock(ActivityThread thread, ManagerApk apk) {
+        try {
+            Context context = systemContext(thread);
+            HostLog.i("Waiting for the user to be unlocked before the manager's application starts");
+
+            BroadcastReceiver receiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context ctx, Intent intent) {
+                    if (!isUserUnlocked(thread)) return;
+
+                    try {
+                        ctx.unregisterReceiver(this);
+                    } catch (Throwable ignored) {
+                        // Already gone is also fine.
+                    }
+
+                    startManagerApplication(thread, apk);
+                }
+            };
+
+            register(context, receiver, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
+        } catch (Throwable cause) {
+            HostLog.e(cause, "Could not wait for the user to be unlocked");
+        }
+    }
+
+    /**
+     * The host's context with the manager's own resources on it -- the same pair the activity is
+     * built with.
+     *
+     * Everything the manager builds hangs off its application context: its views, its theme, its
+     * strings. On the host's resources a Material string this apk carries is a string the table has
+     * never heard of, and the lookup is a Resources$NotFoundException -- which is what the manager's
+     * own log was showing, from the accessibility pass over a tab.
+     */
+    private static Context hostedContext(ManagerApk apk, Context host) {
+        try {
+            Class<?> type = apk.getClassLoader()
+                    .loadClass("io.github.grachevskaya.asya.host.HostContext");
+
+            return (Context) type
+                    .getConstructor(Context.class, android.content.res.Resources.class)
+                    .newInstance(host, apk.getResources());
+        } catch (Throwable cause) {
+            HostLog.e(cause, "Could not build the manager's context; the host's is used instead");
+            return host;
+        }
+    }
+
+    /** The application the manager runs on, made once, at the first moment it can be. */
+    private static void ensureManagerApplication(ActivityThread thread) {
+        ManagerApk apk = managerApk;
+        if (apk == null) return;
+
+        startManagerApplication(thread, apk);
     }
 
     /**
@@ -184,17 +287,17 @@ public final class HostProcess {
     private static void showManager(ActivityThread thread, Intent from) {
         try {
             /*
-             * Never while the system is still coming up: the manager activity would be created on
-             * the host's main thread during boot, and refusing costs nothing -- both ways in are
-             * still there once the device is up.
+             * The user's own storage being readable is the signal, and not an uptime guess: the
+             * manager's application reads the host's credential-encrypted files the moment it is
+             * created, so it is started once that key is in place and not before. A request that
+             * arrives while the device is still locked has nothing to show yet.
              */
-            String bootCompleted = android.os.SystemProperties.get("sys.boot_completed");
-            long uptimeMs = android.os.SystemClock.elapsedRealtime();
-            if (!"1".equals(bootCompleted) || uptimeMs < 60_000L) {
-                HostLog.i("Ignoring a manager request during boot (boot_completed=%s, uptime=%dms)",
-                        bootCompleted, uptimeMs);
+            if (!isUserUnlocked(thread)) {
+                HostLog.i("Ignoring a manager request: the user is still locked");
                 return;
             }
+
+            ensureManagerApplication(thread);
 
             /*
              * An activity of the host, and one that is looked up rather than named: which activities a

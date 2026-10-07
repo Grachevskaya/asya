@@ -25,15 +25,20 @@ import io.github.grachevskaya.asya.ui.activity.MainActivity
 val Fragment.navController get() = NavHostFragment.findNavController(this)
 
 private val navOptions by lazy {
-    NavOptions.Builder().apply {
-        setEnterAnim(R.anim.activity_open_enter)
-        setExitAnim(R.anim.activity_open_exit)
-        setPopEnterAnim(R.anim.activity_close_enter)
-        setPopExitAnim(R.anim.activity_close_exit)
-    }.build()
+    NavOptions
+        .Builder()
+        .apply {
+            setEnterAnim(R.anim.activity_open_enter)
+            setExitAnim(R.anim.activity_open_exit)
+            setPopEnterAnim(R.anim.activity_close_enter)
+            setPopExitAnim(R.anim.activity_close_exit)
+        }.build()
 }
 
-fun Fragment.navigate(@IdRes resId: Int, args: Bundle? = null) {
+fun Fragment.navigate(
+    @IdRes resId: Int,
+    args: Bundle? = null,
+) {
     val cr = requireContext().contentResolver
     if (AccessibilityUtils.isAnimationEnabled(cr)) {
         navController.navigate(resId, args, navOptions)
@@ -57,17 +62,21 @@ fun Fragment.setupToolbar(
     if (subtitle != null) toolbar.subtitle = subtitle
     toolbar.tooltipText = title
     if (menuRes != null) {
-        val menuProvider = object : MenuProvider {
-            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                menuInflater.inflate(menuRes, menu)
-            }
+        val menuProvider =
+            object : MenuProvider {
+                override fun onCreateMenu(
+                    menu: Menu,
+                    menuInflater: MenuInflater,
+                ) {
+                    menuInflater.inflate(menuRes, menu)
+                }
 
-            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-                return onMenuOptionSelected?.let {
-                    it(menuItem); true
-                } ?: false
+                override fun onMenuItemSelected(menuItem: MenuItem): Boolean =
+                    onMenuOptionSelected?.let {
+                        it(menuItem)
+                        true
+                    } ?: false
             }
-        }
         toolbar.menu.clear()
         toolbar.inflateMenu(menuRes)
         toolbar.setOnMenuItemClickListener(menuProvider::onMenuItemSelected)
@@ -78,19 +87,37 @@ fun Fragment.setupToolbar(
 
 val Fragment.contentResolver get(): ContentResolver = requireContext().contentResolver
 
+/**
+ * Applies a change that can only be applied by building the screen again -- a theme, a locale.
+ *
+ * The page is remembered first: a recreate keeps nothing, so without that the user was returned to
+ * the home page from wherever they had been. The screen fades out and the new one fades in, which is
+ * what makes the change read as a theme being applied rather than as a page being left.
+ */
 fun Fragment.recreateMainActivity(restart: Boolean = false) {
     val mainActivity = activity as MainActivity
     mainActivity.readyToKill = false
 
+    MainActivity.pendingDestination = navController.currentDestination?.id ?: 0
+    MainActivity.fadeInOnCreate = true
+
     if (restart) {
         mainActivity.finish()
         startActivity(Intent(mainActivity, mainActivity.javaClass))
-    } else {
-        mainActivity.recreate()
+        return
     }
+
+    val content = mainActivity.findViewById<View>(android.R.id.content) ?: mainActivity.window.decorView
+    content
+        .animate()
+        .alpha(0f)
+        .setDuration(140L)
+        .withEndAction { mainActivity.recreate() }
+        .start()
 }
 
-fun FragmentTransaction.withAnimations() = setCustomAnimations(
+fun FragmentTransaction.withAnimations() =
+    setCustomAnimations(
         R.anim.activity_open_enter,
         R.anim.activity_open_exit,
         R.anim.activity_close_enter,
@@ -120,7 +147,7 @@ fun setEdge2EdgeFlags(
                 barInsets.left,
                 barInsets.top,
                 barInsets.right,
-                barInsets.bottom
+                barInsets.bottom,
             )
         } else {
             v.setPadding(
@@ -134,7 +161,7 @@ fun setEdge2EdgeFlags(
                 insets.systemWindowInsetLeft,
                 insets.systemWindowInsetTop,
                 insets.systemWindowInsetRight,
-                insets.systemWindowInsetBottom
+                insets.systemWindowInsetBottom,
             )
         }
 
@@ -142,5 +169,4 @@ fun setEdge2EdgeFlags(
     }
 }
 
-fun Fragment.registerOnBackCallback(back: () -> Unit) =
-    requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) { back() }
+fun Fragment.registerOnBackCallback(back: () -> Unit) = requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) { back() }

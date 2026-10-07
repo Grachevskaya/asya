@@ -19,7 +19,9 @@ object ZLUtils {
     /**
      * @return The first argument
      */
-    val EmulatedStackFrame.thisObject by lazyWithReceiver { getArgument(0) }
+    val EmulatedStackFrame.thisObject by lazyWithReceiver {
+        checkNotNull(getArgument(0)) { "Instance hook has no receiver" }
+    }
 
     /**
      * - `args[0]: thisObject`
@@ -67,11 +69,12 @@ object ZLUtils {
      * - `index == 0: thisObject`
      * - `index >= 1: function args`
      */
-    fun EmulatedStackFrame.getArgument(index: Int): Any {
+    // Reference slots may legitimately contain null; primitive slots still return boxed values.
+    fun EmulatedStackFrame.getArgument(index: Int): Any? {
         val accessor = accessor()
 
         return when (accessor.getArgumentShorty(index)) {
-            'L' -> accessor.getReference(index)
+            'L' -> accessor.getReference<Any?>(index)
             'Z' -> accessor.getBoolean(index)
             'B' -> accessor.getByte(index)
             'C' -> accessor.getChar(index)
@@ -84,7 +87,18 @@ object ZLUtils {
         }
     }
 
-    fun EmulatedStackFrame.setArgument(index: Int, value: Any) {
+    /** Finds a reference without boxing primitives or materializing every argument. */
+    fun <T : Any> EmulatedStackFrame.firstReferenceArgument(argumentType: Class<T>): T? {
+        val accessor = accessor()
+        for (index in 0 until type().parameterCount()) {
+            if (accessor.getArgumentShorty(index) != 'L') continue
+            val value = accessor.getReference<Any?>(index)
+            if (argumentType.isInstance(value)) return argumentType.cast(value)
+        }
+        return null
+    }
+
+    fun EmulatedStackFrame.setArgument(index: Int, value: Any?) {
         val accessor = accessor()
 
         when (accessor.getArgumentShorty(index)) {
@@ -106,11 +120,6 @@ object ZLUtils {
             accessor().setValue(RETURN_VALUE_IDX, value)
         }
     }
-
-    fun getStaticObjectField(className: String, name: String) = getDeclaredField(
-        Class.forName(className),
-        name,
-    ).get(null)
 
     fun getStaticIntField(className: String, name: String) = getDeclaredField(
         Class.forName(className),
@@ -150,14 +159,6 @@ object ZLUtils {
             name,
             *args.map { it.javaClass }.toTypedArray()
         ).apply { isAccessible = true }.invoke(null, *args)
-    }
-
-    fun findConstructor(className: String, argumentCount: Int = -1): Constructor<*>? {
-        val clazz = Class.forName(className, true, SystemServerHook.classLoader)
-
-        return clazz.constructors.firstOrNull {
-            argumentCount == -1 || it.parameterCount == argumentCount
-        }
     }
 
     fun findMethod(className: String, name: String, isDeclared: Boolean = false, systemClassLoader: Boolean = false, vararg args: Class<*>): Method {

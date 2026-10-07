@@ -8,11 +8,10 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import dev.androidbroadcast.vbpd.viewBinding
-import io.github.grachevskaya.asya.ui.fragment.LogsFragment
-import io.github.grachevskaya.asya.ui.util.navController
-import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.databinding.FragmentTabbedLogsBinding
+import io.github.grachevskaya.asya.ui.fragment.LogsFragment
+import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 
 class TabbedLogsFragment : Fragment() {
     private val binding by viewBinding(FragmentTabbedLogsBinding::bind)
@@ -34,27 +33,28 @@ class TabbedLogsFragment : Fragment() {
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View = inflater.inflate(R.layout.fragment_tabbed_logs, container, false)
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        with(binding.toolbar) {
-            setNavigationIcon(R.drawable.baseline_arrow_back_24)
-            setNavigationOnClickListener { navController.popBackStack() }
-        }
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
+        binding.collapsing.title = getString(R.string.title_logs)
+        binding.toolbar.title = null
 
         with(binding.viewPager) {
-            adapter = object : FragmentStateAdapter(childFragmentManager, lifecycle) {
-                override fun createFragment(index: Int): Fragment {
-                    return when (index) {
-                        0 -> LogsFragment()
-                        1 -> StatsFragment()
-                        else -> throw UnsupportedOperationException("Invalid tab index: $index")
-                    }
-                }
+            adapter =
+                object : FragmentStateAdapter(childFragmentManager, lifecycle) {
+                    override fun createFragment(index: Int): Fragment =
+                        when (index) {
+                            0 -> LogsFragment()
+                            1 -> StatsFragment()
+                            else -> throw UnsupportedOperationException("Invalid tab index: $index")
+                        }
 
-                override fun getItemCount() = tabsList.size
-            }
+                    override fun getItemCount() = tabsList.size
+                }
         }
 
         TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->

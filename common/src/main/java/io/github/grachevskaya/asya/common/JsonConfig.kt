@@ -1,38 +1,32 @@
 package io.github.grachevskaya.asya.common
 
-import io.github.grachevskaya.asya.common.Utils.encoder
-import io.github.grachevskaya.asya.common.settings_presets.ReplacementItem
-import kotlinx.serialization.Serializable
 import io.github.grachevskaya.asya.common.BuildConfig
+import io.github.grachevskaya.asya.common.Utils.encoder
+import kotlinx.serialization.Serializable
 
 @Serializable
 data class JsonConfig(
     var configVersion: Int = BuildConfig.CONFIG_VERSION,
-
     /**
      * Enable/disable debug (and verbose for debug builds) logging
      */
     var detailLog: Boolean = false,
-
     /**
      * Enable/disable error-only logging
      *
      * It will disable all log channels except the error channel
      */
     var errorOnlyLog: Boolean = false,
-
     /**
      * Maximum log size in KBs.
      *
      * Increasing it much will cause Binder issues for now
      */
     var maxLogSize: Int = 512,
-
     /**
      * Enable/disable target SDK 30+ restrictions for all apps
      */
     var forceMountData: Boolean = true,
-
     /**
      * Enable/disable the activity launch protection
      *
@@ -40,12 +34,10 @@ data class JsonConfig(
      * applications when they are hidden from target app, and reduces detections
      */
     var disableActivityLaunchProtection: Boolean = false,
-
     /**
      * Enable/disable alternative (propless) appdata isolation
      */
     var altAppDataIsolation: Boolean = false,
-
     /**
      * Enable/disable alternative (propless) vold appdata isolation
      *
@@ -53,48 +45,39 @@ data class JsonConfig(
      * vold existence even while not using props
      */
     var altVoldAppDataIsolation: Boolean = false,
-
     /**
      * Skip vold appdata isolation enforcements for system apps
      *
      * This will help you to reduce bootloop issues caused by vold appdata isolation
      */
     var skipSystemAppDataIsolation: Boolean = true,
-
     /**
      * Enable WebView protection to prevent some crashes caused by misconfigurations
      * for WebView or Browser apps
      */
     var webViewProtection: Boolean = true,
-
     /**
      * Enable ignorance of brand-level protections
      * It will be used in app data isolation for now
      */
     var ignoreBrandProtections: Boolean = false,
-
     /**
      * This config will be applied for ALL of new apps when enabled
      *
      * null means do not apply a default config
      */
     var defaultConfig: AppConfig? = null,
-
-
     val templates: MutableMap<String, Template> = mutableMapOf(),
-    val settingsTemplates: MutableMap<String, SettingsTemplate> = mutableMapOf(),
-
     /**
      * Kept for the configs that already carry it: nothing reads it any more -- the setting that
      * wrote it was offered in the manager and honoured by nothing, so it was taken out of the ui.
      * The field stays so that a config written before that still parses.
      */
     val disabledHooks: MutableList<HookItem> = mutableListOf(),
-
     /**
      * A package name and config pair to keep per-app configs
      */
-    val scope: MutableMap<String, AppConfig> = mutableMapOf()
+    val scope: MutableMap<String, AppConfig> = mutableMapOf(),
 ) {
     @Serializable
     data class Template(
@@ -102,25 +85,10 @@ data class JsonConfig(
          * Is it a blacklist or whitelist template?
          */
         val isWhitelist: Boolean,
-
         /**
          * Apps inside of this application template
          */
-        val appList: Set<String>
-    ) {
-        override fun toString() = encoder.encodeToString(this)
-    }
-
-    @Serializable
-    /**
-     * A type of template that holds settings replacements/overrides
-     *
-     */
-    data class SettingsTemplate(
-        /**
-         * Setting replacements inside of this settings template
-         */
-        val settingsList: Set<ReplacementItem>
+        val appList: Set<String>,
     ) {
         override fun toString() = encoder.encodeToString(this)
     }
@@ -131,27 +99,22 @@ data class JsonConfig(
          * Is it a blacklist or whitelist configuration?
          */
         var useWhitelist: Boolean = false,
-
         /**
          * Exclude/include system apps for whitelist mode
          */
         var excludeSystemApps: Boolean = true,
-
         /**
          * Hide all user apps' installation sources
          */
         var hideInstallationSource: Boolean = false,
-
         /**
          * Hide all system apps' installation sources
          */
         var hideSystemInstallationSource: Boolean = false,
-
         /**
          * Exclude the target app from installation source replacements
          */
         var excludeTargetInstallationSource: Boolean = false,
-
         /**
          * Invert the currently active activity protection mode for this application
          *
@@ -160,7 +123,6 @@ data class JsonConfig(
          * - If it was disabled globally, then it will be enabled for this application
          */
         var invertActivityLaunchProtection: Boolean = false,
-
         /**
          * Exclude this app from appdata isolation
          *
@@ -168,35 +130,26 @@ data class JsonConfig(
          * for the target app or the app assumes the vold isolation as a detection point
          */
         var excludeVoldIsolation: Boolean = false,
-
         /**
          * A list of removed Zygote permissions while the app was launching
          */
-        var restrictedZygotePermissions: List<Int> = listOf(),
-
         /**
          * A list of applied application templates, it has to contain items
          * from the global application template list
          */
         var applyTemplates: MutableSet<String> = mutableSetOf(),
-
         /**
          */
-
         /**
          * A list of applied settings templates, it has to contain items
          * from the global settings template list
          */
-        var applySettingTemplates: MutableSet<String> = mutableSetOf(),
-
         /**
          */
-
         /**
          * Extra hidden/unhidden apps list, depends on `useWhitelist`
          */
         var extraAppList: MutableSet<String> = mutableSetOf(),
-
         /**
          * Extra hidden/unhidden apps list in opposite way, depends on `useWhitelist`
          *
@@ -227,7 +180,6 @@ data class JsonConfig(
 
     companion object {
         fun parse(json: String) = encoder.decodeFromString<JsonConfig>(json)
-
     }
 
     override fun toString() = encoder.encodeToString(this)

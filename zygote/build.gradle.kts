@@ -144,10 +144,10 @@ zygisk {
     packages(ZygoteLoader.PACKAGE_SYSTEM_SERVER, "com.android.systemui")
 
     // module properties
-    id = "hma_oss_zygisk"
-    name = "HMA-OSS Zygisk"
-    author = "frknkrc44"
-    description = "A Zygisk backend for HMA-OSS"
+    id = "asya"
+    name = "Asya"
+    author = "KodateMitsuru"
+    description = "Z.A.T.O. // I Love the World and Everything In It"
     entrypoint = "io.github.grachevskaya.asya.zygote.ZygoteEntry"
     archiveName = "${rootProject.name}-${android.defaultConfig.versionName}"
 }

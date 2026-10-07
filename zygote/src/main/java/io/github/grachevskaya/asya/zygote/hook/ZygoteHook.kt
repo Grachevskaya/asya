@@ -1,24 +1,17 @@
 package io.github.grachevskaya.asya.zygote.hook
 
-import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.ProcessParams
-import com.v7878.unsafe.ArtMethodUtils
 import com.v7878.unsafe.invoke.EmulatedStackFrame
 import io.github.grachevskaya.asya.common.CollectionUtils.firstOrNullWithType
 import io.github.grachevskaya.asya.common.CollectionUtils.lastOrNullWithType
-import io.github.grachevskaya.asya.common.Constants
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.isAppDataIsolationEnabled
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.argTypes
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.args
-import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.setArgument
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.shortyEquals
-import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.CONSTRUCTOR_METHOD_NAME
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.NATIVE_ZYGOTE_PROCESS_CLASS
-import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.SERVICE_RECORD_CLASS
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.ZYGOTE_PROCESS_CLASS
 import java.util.concurrent.atomic.AtomicReference
 
@@ -27,7 +20,8 @@ class ZygoteHook : IFrameworkHook {
 
     private val lastForceMountedApp: AtomicReference<String?> = AtomicReference(null)
 
-    private val forceMountData get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+    private val forceMountData get() =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             config.forceMountData &&
             isAppDataIsolationEnabled(config)
 
@@ -38,26 +32,6 @@ class ZygoteHook : IFrameworkHook {
                 "start",
             ) { _, frame, _ ->
                 hookIntoZygoteProcess(frame)
-            }
-
-            // TODO: Try to find a way for Android 12- compatibility without harming TANGO support
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Try to fix PrivIsolated
-                hookBefore(
-                    SERVICE_RECORD_CLASS,
-                    CONSTRUCTOR_METHOD_NAME,
-                ) { _, frame, _ ->
-                    val caller = frame.args.firstOrNullWithType<String>() ?: return@hookBefore
-                    val perms = service.getRestrictedZygotePermissions(caller) ?: return@hookBefore
-                    if (!perms.contains(Constants.APP_ZYGOTE_GID)) return@hookBefore
-
-                    val serviceInfo = frame.args.firstOrNullWithType<ServiceInfo>() ?: return@hookBefore
-                    if (serviceInfo.flags and ServiceInfo.FLAG_ISOLATED_PROCESS == 0) return@hookBefore
-                    if (serviceInfo.flags and ServiceInfo.FLAG_NATIVE_SERVICE != 0) return@hookBefore
-
-                    logD(TAG) { "@serviceRecord: Isolated process becomes app zygote process for $caller service" }
-                    serviceInfo.flags = serviceInfo.flags or ServiceInfo.FLAG_USE_APP_ZYGOTE
-                }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
@@ -71,19 +45,10 @@ class ZygoteHook : IFrameworkHook {
         }
     }
 
-    private fun hookIntoZygoteProcess(frame: EmulatedStackFrame) {
-        val isModern = frame.type().parameterCount() < 3
-        logD(TAG) { "@startZygoteProcess: Starting ${frame.args.contentToString()}, modern: $isModern" }
-
-        if (isModern) {
-            hookIntoZygoteProcessModern(frame)
-        } else {
-            hookIntoZygoteProcessLegacy(frame)
-        }
-    }
-
     @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
-    private fun hookIntoZygoteProcessLegacy(frame: EmulatedStackFrame) {
+    private fun hookIntoZygoteProcess(frame: EmulatedStackFrame) {
+        logD(TAG) { "@startZygoteProcess: Starting ${frame.args.contentToString()}" }
+
         val caller = frame.args.lastOrNullWithType<String>() ?: return
         val isHookEnabled = service.isHookEnabled(caller)
         if (!isHookEnabled) return
@@ -91,81 +56,27 @@ class ZygoteHook : IFrameworkHook {
         // another plan for PlatformCompatHook
         val pair = getForceMountArgs(frame, caller)
         if (pair.first) {
-            val lastMapIndex = frame.argTypes.indexOfLast {
-                it == java.util.Map::class.java
-            }
+            val lastMapIndex =
+                frame.argTypes.indexOfLast {
+                    it == java.util.Map::class.java
+                }
             if (lastMapIndex >= 0) {
                 // enable bindMountAppsData after checks
                 val bindMountAppsDataIndex = lastMapIndex + 1
                 if (frame.shortyEquals(bindMountAppsDataIndex, 'Z')) {
                     val last = lastForceMountedApp.getAndSet(caller)
-                    if (last != caller) logI(TAG) { "@startZygoteProcessLegacy: force mountAppsData for $caller" }
+                    if (last != caller) logI(TAG) { "@startZygoteProcess: force mountAppsData for $caller" }
                     frame.setArgument(bindMountAppsDataIndex, true)
-                    logD(TAG) { "@startZygoteProcessLegacy: mountAppsData argument overridden for $caller" }
+                    logD(TAG) { "@startZygoteProcess: mountAppsData argument overridden for $caller" }
                 }
             }
         }
-
-        if (pair.second < 0) return
-
-        val perms = getRestrictedZygotePermissions(caller) ?: return
-        if (perms.isNotEmpty()) {
-            val gIDs = frame.args[pair.second] as? IntArray ?: return
-
-            logD(TAG) { "@startZygoteProcessLegacy: GIDs are ${gIDs.contentToString()}, removing $perms now" }
-            frame.setArgument(pair.second, gIDs.filter { it !in perms }.toIntArray())
-            service.increaseOthersFilterCount(caller)
-        }
     }
 
-    /**
-     * This method is added on Android 17 QPR3 Beta 1
-     */
-    private fun hookIntoZygoteProcessModern(frame: EmulatedStackFrame) {
-        val processParams = frame.getArgument(1) as ProcessParams
-
-        val caller = processParams.packageName
-        val isHookEnabled = service.isHookEnabled(caller)
-        if (!isHookEnabled) return
-
-        fun makeProcessParamsBuilder(): ProcessParams.Builder {
-            val constructor = ProcessParams.Builder::class.java
-                .getDeclaredConstructor(ProcessParams::class.java)
-            ArtMethodUtils.makeExecutablePublic(constructor)
-            return (constructor.newInstance(processParams) as ProcessParams.Builder).apply {
-                // they don't set zygotePolicyFlags in that constructor, so an override maybe required
-                setZygotePolicyFlags(processParams.zygotePolicyFlags)
-            }
-        }
-
-        var builder: ProcessParams.Builder? = null
-        if (processParams.targetSdkVersion < Build.VERSION_CODES.R && processParams.isTopApp) {
-            builder = makeProcessParamsBuilder()
-            builder.setBindMountAppsData(true)
-        }
-
-        fun runFinish() {
-            builder?.let { frame.setArgument(1, it.build()) }
-        }
-
-        if (processParams.gids == null) {
-            return runFinish()
-        }
-
-        val perms = getRestrictedZygotePermissions(caller) ?: return runFinish()
-        if (perms.isNotEmpty()) {
-            val gIDs = processParams.gids
-            logD(TAG) { "@startZygoteProcessModern: GIDs are ${gIDs.contentToString()}, removing $perms now" }
-
-            if (builder == null) builder = makeProcessParamsBuilder()
-            builder.setGids(gIDs.filter { it !in perms }.toIntArray())
-            service.increaseOthersFilterCount(caller)
-        }
-
-        runFinish()
-    }
-
-    private fun getForceMountArgs(frame: EmulatedStackFrame, caller: String): Pair<Boolean, Int> {
+    fun getForceMountArgs(
+        frame: EmulatedStackFrame,
+        caller: String,
+    ): Pair<Boolean, Int> {
         var gIDsVarIndex = -1
         for ((i, clazz) in frame.argTypes.withIndex()) {
             if (clazz == IntArray::class.java) {
@@ -193,12 +104,5 @@ class ZygoteHook : IFrameworkHook {
         }
 
         return Pair(false, gIDsVarIndex)
-    }
-
-    private fun getRestrictedZygotePermissions(caller: String): List<Int>? {
-        return service.getRestrictedZygotePermissions(caller)?.filter {
-            // reject if not available in GID_PAIRS, or it is APP_ZYGOTE_GID
-            Constants.GID_PAIRS.containsValue(it) || it == Constants.APP_ZYGOTE_GID
-        }
     }
 }

@@ -36,7 +36,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HMA-OSS"
+rootProject.name = "asya"
 
 include(
     ":app",

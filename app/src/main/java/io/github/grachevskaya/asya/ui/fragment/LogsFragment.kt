@@ -8,11 +8,12 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dev.androidbroadcast.vbpd.viewBinding
 import io.github.grachevskaya.asya.MyApp
+import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.OSUtils
+import io.github.grachevskaya.asya.databinding.FragmentLogsBinding
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.adapter.LogAdapter
@@ -20,8 +21,6 @@ import io.github.grachevskaya.asya.ui.util.contentResolver
 import io.github.grachevskaya.asya.ui.util.setupToolbar
 import io.github.grachevskaya.asya.ui.util.showToast
 import kotlinx.coroutines.launch
-import io.github.grachevskaya.asya.R
-import io.github.grachevskaya.asya.databinding.FragmentLogsBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,13 +42,15 @@ class LogsFragment : Fragment(R.layout.fragment_logs) {
                 return@save
             }
             contentResolver.openOutputStream(uri).use { output ->
-                if (output == null) showToast(R.string.home_export_failed)
-                else {
+                if (output == null) {
+                    showToast(R.string.home_export_failed)
+                } else {
                     output.write(
-                        OSUtils.collectOSInfo(
-                            requireContext(),
-                            ServiceClient.serviceVersionName,
-                        ).toByteArray()
+                        OSUtils
+                            .collectOSInfo(
+                                requireContext(),
+                                ServiceClient.serviceVersionName,
+                            ).toByteArray(),
                     )
                     output.write("\n\n".toByteArray())
                     output.write(logCache!!.toByteArray())
@@ -66,49 +67,55 @@ class LogsFragment : Fragment(R.layout.fragment_logs) {
         loadingIndicator.isVisible = true
 
         MyApp.asyaApp.globalScope.launch {
-          try {
-            logCache = try {
-                ServiceClient.logs
-            } catch (_: Throwable) {
-                "[ERROR] <01-01 01:01:01> (${getString(R.string.app_name)}) Cannot read logs due to Binder issues, try reading ${ServiceClient.logFileLocation} manually"
-            }
+            try {
+                logCache =
+                    try {
+                        ServiceClient.logs
+                    } catch (_: Throwable) {
+                        "[ERROR] <01-01 01:01:01> (${getString(
+                            R.string.app_name,
+                        )}) Cannot read logs due to Binder issues, try reading ${ServiceClient.logFileLocation} manually"
+                    }
 
-            val raw = logCache?.split("\n")
-            if (raw != null) {
-                val logList = buildList {
-                    val cur = StringBuilder()
-                    for (line in raw) {
-                        if (line.startsWith('[')) {
+                val raw = logCache?.split("\n")
+                if (raw != null) {
+                    val logList =
+                        buildList {
+                            val cur = StringBuilder()
+                            for (line in raw) {
+                                if (line.startsWith('[')) {
+                                    if (cur.isNotEmpty()) {
+                                        val log = LogAdapter.parseLog(cur.toString())
+                                        if (log != null) add(log)
+                                    }
+                                    cur.clear()
+                                }
+                                if (cur.isNotEmpty()) cur.append('\n')
+                                cur.append(line)
+                            }
                             if (cur.isNotEmpty()) {
                                 val log = LogAdapter.parseLog(cur.toString())
                                 if (log != null) add(log)
                             }
-                            cur.clear()
+                            if (!PrefManager.logFilter_reverseOrder) reverse()
                         }
-                        if (cur.isNotEmpty()) cur.append('\n')
-                        cur.append(line)
-                    }
-                    if (cur.isNotEmpty()) {
-                        val log = LogAdapter.parseLog(cur.toString())
-                        if (log != null) add(log)
-                    }
-                    if (!PrefManager.logFilter_reverseOrder) reverse()
-                }
 
-                lifecycleScope.launch {
-                    loadingIndicator.isVisible = false
-                    adapter.logs = logList
+                    lifecycleScope.launch {
+                        loadingIndicator.isVisible = false
+                        binding.swipeRefresh.isRefreshing = false
+                        adapter.logs = logList
+                    }
                 }
-            }
-          } catch (cause: Throwable) {
+            } catch (cause: Throwable) {
               /*
                * Whatever went wrong in here -- a parse, a preference, anything -- the indicator has
                * to come down. Leaving it turning is a spinner forever, with no way to tell that the
                * load had already given up.
                */
-              android.util.Log.e("AsyaLogs", "Could not show the logs", cause)
-              lifecycleScope.launch { loadingIndicator.isVisible = false }
-          }
+                android.util.Log.e("AsyaLogs", "Could not show the logs", cause)
+                lifecycleScope.launch { loadingIndicator.isVisible = false }
+                binding.swipeRefresh.isRefreshing = false
+            }
         }
     }
 
@@ -116,35 +123,40 @@ class LogsFragment : Fragment(R.layout.fragment_logs) {
         if (loadingIndicator.isVisible) return
 
         when (item.itemId) {
-            R.id.menu_refresh -> updateLogs()
             R.id.menu_save -> {
                 val date = SimpleDateFormat("yyyy-MM-dd_HH.mm.ss", Locale.getDefault()).format(Date())
                 saveSAFLauncher.launch("asya_logs_$date.log")
             }
+
             R.id.menu_delete -> {
                 ServiceClient.clearLogs()
                 updateLogs()
             }
+
             R.id.menu_filter_debug -> {
                 item.isChecked = true
                 PrefManager.logFilter_level = 0
                 updateLogs()
             }
+
             R.id.menu_filter_info -> {
                 item.isChecked = true
                 PrefManager.logFilter_level = 1
                 updateLogs()
             }
+
             R.id.menu_filter_warn -> {
                 item.isChecked = true
                 PrefManager.logFilter_level = 2
                 updateLogs()
             }
+
             R.id.menu_filter_error -> {
                 item.isChecked = true
                 PrefManager.logFilter_level = 3
                 updateLogs()
             }
+
             R.id.menu_reverse_order -> {
                 item.isChecked = !item.isChecked
                 PrefManager.logFilter_reverseOrder = item.isChecked
@@ -153,10 +165,13 @@ class LogsFragment : Fragment(R.layout.fragment_logs) {
         }
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         binding.list.layoutManager = LinearLayoutManager(context)
         binding.list.adapter = adapter
-        binding.list.addItemDecoration(DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL))
+        binding.swipeRefresh.setOnRefreshListener { updateLogs() }
         updateLogs()
     }
 
@@ -169,6 +184,7 @@ class LogsFragment : Fragment(R.layout.fragment_logs) {
             menuRes = R.menu.menu_logs,
             onMenuOptionSelected = this::onMenuOptionSelected,
         )
+        toolbar.title = null
 
         with(toolbar.menu) {
             when (PrefManager.logFilter_level) {

@@ -25,7 +25,7 @@ import coil3.request.transformations
 import coil3.transform.CircleCropTransformation
 import dev.androidbroadcast.vbpd.viewBinding
 import io.github.grachevskaya.asya.common.Constants
-import io.github.grachevskaya.asya.data.AppConstants.allAppIcons
+import io.github.grachevskaya.asya.data.AppConstants
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.ui.util.AccessibilityUtils
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.attrDrawable
@@ -33,7 +33,6 @@ import io.github.grachevskaya.asya.ui.util.ThemeUtils.homeItemBackgroundColor
 import io.github.grachevskaya.asya.ui.util.dpToPx
 import io.github.grachevskaya.asya.ui.util.navController
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
-import io.github.grachevskaya.asya.util.PackageHelper.findEnabledAppComponent
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.databinding.FragmentAboutBinding
@@ -122,9 +121,9 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         // What the pair stands on. Folded away, and both halves of it restored: the fork this comes
         // from, and the closed project that fork itself came from.
         with(binding.listHmaOss) {
-            addDevItem(this, R.drawable.cont_fk, "frknkrc44", "HMA-OSS Developer", "https://github.com/frknkrc44", "https://github.com/sponsors/frknkrc44")
+            addDevItem(this, R.drawable.cont_fk, "frknkrc44", "HMA-OSS, upstream", "https://github.com/frknkrc44")
             addDevItem(this, R.drawable.cont_oukaromf, "OukaroMF", "HMA-OSS Alt Icon Designer", "https://github.com/OukaroMF")
-            addDevItem(this, R.drawable.cont_chunqiu, "longze", "HMA-OSS Contributor")
+            addDevItem(this, R.drawable.cont_chunqiu, "longze", "HMA-OSS Contributor", null)
         }
 
         with(binding.listHma) {
@@ -147,8 +146,9 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         }
     }
 
-    fun addDevItem(layout: LinearLayout, @DrawableRes avatarResId: Int, name: String, desc: String, url: String? = null, donateUrl: String? = null) {
+    fun addDevItem(layout: LinearLayout, @DrawableRes avatarResId: Int, name: String, desc: String, url: String?) {
         val newLayout = FragmentAboutListItemBinding.inflate(layoutInflater)
+        setOnClickUrl(newLayout.root, url)
 
         if (avatarResId != 0) {
             val icon = newLayout.aboutPersonIcon
@@ -167,20 +167,6 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             newLayout.aboutPersonIcon.isVisible = false
         }
 
-        url?.let {
-            with(newLayout.aboutInfo) {
-                isVisible = true
-                setOnClickUrl(this, it)
-            }
-        }
-
-        donateUrl?.let {
-            with(newLayout.aboutDonate) {
-                isVisible = true
-                setOnClickUrl(this, it)
-            }
-        }
-
         newLayout.text1.text = name
         newLayout.text2.text = desc
         layout.addView(newLayout.root)
@@ -196,7 +182,9 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         layout.addView(newLayout.root)
     }
 
-    fun setOnClickUrl(view: View, url: String) {
+    fun setOnClickUrl(view: View, url: String?) {
+        if (url == null) return
+
         view.setOnClickListener {
             val intent = Intent(Intent.ACTION_VIEW)
             intent.data = url.toUri()

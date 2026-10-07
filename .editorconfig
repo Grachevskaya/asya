@@ -1,0 +1,12 @@
+# Formatting for this tree. ktlint reads this file; editors that understand .editorconfig do too.
+root = true
+
+[*.{kt,kts}]
+indent_size = 4
+indent_style = space
+
+# Two comment rules are off on purpose: this codebase documents a member with more than one
+# KDoc/block comment where each states a fact of its own, and ktlint calls that an error it cannot
+# fix. Everything else ktlint checks stays on.
+ktlint_standard_no-consecutive-comments = disabled
+ktlint_standard_kdoc = disabled

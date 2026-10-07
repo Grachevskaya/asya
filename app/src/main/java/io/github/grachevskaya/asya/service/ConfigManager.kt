@@ -2,14 +2,13 @@ package io.github.grachevskaya.asya.service
 
 import android.os.Build
 import android.util.Log
+import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.common.CollectionUtils.removeIfWithCount
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
 import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.PropertyUtils
-import io.github.grachevskaya.asya.common.settings_presets.ReplacementItem
 import io.github.grachevskaya.asya.service.ServiceClient.log
 import io.github.grachevskaya.asya.util.PackageHelper
-import io.github.grachevskaya.asya.common.BuildConfig
 
 object ConfigManager {
     /**
@@ -35,7 +34,11 @@ object ConfigManager {
         IGNORED_APPS,
     }
 
-    data class TemplateInfo(val name: String?, val type: PTType, val isWhiteList: Boolean)
+    data class TemplateInfo(
+        val name: String?,
+        val type: PTType,
+        val isWhiteList: Boolean,
+    )
 
     private const val TAG = "ConfigManager"
     private var config = JsonConfig()
@@ -78,8 +81,11 @@ object ConfigManager {
 
     var forceMountData: Boolean
         get() =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) config.forceMountData
-            else false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                config.forceMountData
+            } else {
+                false
+            }
         set(value) {
             config.forceMountData = value
             saveConfig()
@@ -133,23 +139,19 @@ object ConfigManager {
         saveConfig()
     }
 
-    fun hasTemplate(name: String?): Boolean {
-        return config.templates.containsKey(name)
-    }
+    fun hasTemplate(name: String?): Boolean = config.templates.containsKey(name)
 
-    fun getTemplateList(): MutableList<TemplateInfo> {
-        return config.templates.mapTo(mutableListOf()) { TemplateInfo(it.key, PTType.APP, it.value.isWhitelist) }
-    }
+    fun getTemplateList(): MutableList<TemplateInfo> =
+        config.templates.mapTo(mutableListOf()) {
+            TemplateInfo(it.key, PTType.APP, it.value.isWhitelist)
+        }
 
-    fun getTemplateAppliedAppList(name: String): ArrayList<String> {
-        return config.scope.mapNotNullTo(ArrayList()) {
+    fun getTemplateAppliedAppList(name: String): ArrayList<String> =
+        config.scope.mapNotNullTo(ArrayList()) {
             if (it.value.applyTemplates.contains(name)) it.key else null
         }
-    }
 
-    fun getTemplateTargetAppList(name: String): ArrayList<String> {
-        return ArrayList(config.templates[name]?.appList ?: emptyList())
-    }
+    fun getTemplateTargetAppList(name: String): ArrayList<String> = ArrayList(config.templates[name]?.appList ?: emptyList())
 
     fun deleteTemplate(name: String) {
         config.scope.forEach { (_, appInfo) ->
@@ -159,7 +161,10 @@ object ConfigManager {
         saveConfig()
     }
 
-    fun renameTemplate(oldName: String, newName: String) {
+    fun renameTemplate(
+        oldName: String,
+        newName: String,
+    ) {
         if (oldName == newName) return
         config.scope.forEach { (_, appInfo) ->
             if (appInfo.applyTemplates.contains(oldName)) {
@@ -172,103 +177,70 @@ object ConfigManager {
         saveConfig()
     }
 
-    fun updateTemplate(name: String, template: JsonConfig.Template) {
+    fun updateTemplate(
+        name: String,
+        template: JsonConfig.Template,
+    ) {
         log(Log.DEBUG, TAG, "updateTemplate: $name list = ${template.appList}")
         config.templates[name] = template
         saveConfig()
     }
 
-    fun updateTemplateAppliedApps(name: String, appliedList: List<String>) {
+    fun updateTemplateAppliedApps(
+        name: String,
+        appliedList: List<String>,
+    ) {
         log(Log.DEBUG, TAG, "updateTemplateAppliedApps: $name list = $appliedList")
         config.scope.forEach { (app, appInfo) ->
-            if (appliedList.contains(app)) appInfo.applyTemplates.add(name)
-            else appInfo.applyTemplates.remove(name)
-        }
-        saveConfig()
-    }
-
-    fun getSettingTemplateList(): MutableList<TemplateInfo> {
-        return config.settingsTemplates.mapTo(mutableListOf()) { TemplateInfo(it.key, PTType.SETTINGS, false) }
-    }
-
-    fun getSettingTemplateAppliedAppList(name: String): ArrayList<String> {
-        return config.scope.mapNotNullTo(ArrayList()) {
-            if (it.value.applySettingTemplates.contains(name)) it.key else null
-        }
-    }
-
-    fun getSettingTemplateTargetSettingList(name: String): ArrayList<ReplacementItem> {
-        return ArrayList(config.settingsTemplates[name]?.settingsList ?: emptyList())
-    }
-
-    fun deleteSettingTemplate(name: String) {
-        config.scope.forEach { (_, appInfo) ->
-            appInfo.applySettingTemplates.remove(name)
-        }
-        config.settingsTemplates.remove(name)
-        saveConfig()
-    }
-
-    fun renameSettingTemplate(oldName: String, newName: String) {
-        if (oldName == newName) return
-        config.scope.forEach { (_, appInfo) ->
-            if (appInfo.applySettingTemplates.contains(oldName)) {
-                appInfo.applySettingTemplates.remove(oldName)
-                appInfo.applySettingTemplates.add(newName)
+            if (appliedList.contains(app)) {
+                appInfo.applyTemplates.add(name)
+            } else {
+                appInfo.applyTemplates.remove(name)
             }
         }
-        config.settingsTemplates[newName] = config.settingsTemplates[oldName]!!
-        config.settingsTemplates.remove(oldName)
         saveConfig()
     }
 
-    fun updateSettingTemplate(name: String, template: JsonConfig.SettingsTemplate) {
-        log(Log.DEBUG, TAG, "updateSettingTemplate: $name list = ${template.settingsList}")
-        config.settingsTemplates[name] = template
-        saveConfig()
-    }
+    fun isHideEnabled(packageName: String): Boolean = config.scope.containsKey(packageName)
 
-    fun updateSettingTemplateAppliedApps(name: String, appliedList: List<String>) {
-        log(Log.DEBUG, TAG, "updateSettingTemplateAppliedApps: $name list = $appliedList")
-        config.scope.forEach { (app, appInfo) ->
-            if (appliedList.contains(app)) appInfo.applySettingTemplates.add(name)
-            else appInfo.applySettingTemplates.remove(name)
+    fun getAppConfig(packageName: String): JsonConfig.AppConfig? = config.scope[packageName]
+
+    fun setAppConfig(
+        packageName: String,
+        appConfig: JsonConfig.AppConfig?,
+    ) {
+        if (appConfig == null) {
+            config.scope.remove(packageName)
+        } else {
+            config.scope[packageName] = appConfig
         }
         saveConfig()
     }
 
-    fun isHideEnabled(packageName: String): Boolean {
-        return config.scope.containsKey(packageName)
-    }
-
-    fun getAppConfig(packageName: String): JsonConfig.AppConfig? {
-        return config.scope[packageName]
-    }
-
-    fun setAppConfig(packageName: String, appConfig: JsonConfig.AppConfig?) {
-        if (appConfig == null) config.scope.remove(packageName)
-        else config.scope[packageName] = appConfig
-        saveConfig()
-    }
-
-    fun clearUninstalledAppConfigs(inConfig: JsonConfig = config, onFinish: (success: Boolean) -> Unit) {
+    fun clearUninstalledAppConfigs(
+        inConfig: JsonConfig = config,
+        onFinish: (success: Boolean) -> Unit,
+    ) {
         PackageHelper.invalidateCache { throwable ->
             if (throwable == null) {
                 // --- STEP 1: Clear uninstalled app configs ---
-                val scopeRemoveCount = inConfig.scope.removeIfWithCount { packageName, _ ->
-                    !PackageHelper.exists(packageName)
-                }
+                val scopeRemoveCount =
+                    inConfig.scope.removeIfWithCount { packageName, _ ->
+                        !PackageHelper.exists(packageName)
+                    }
 
                 // --- STEP 2: Clear uninstalled apps from extra app lists ---
                 var cleanedAppCount = 0
                 inConfig.scope.values.forEach { config ->
-                    cleanedAppCount += config.extraAppList.removeIfWithCount { packageName ->
-                        !PackageHelper.exists(packageName)
-                    }
+                    cleanedAppCount +=
+                        config.extraAppList.removeIfWithCount { packageName ->
+                            !PackageHelper.exists(packageName)
+                        }
 
-                    cleanedAppCount += config.extraOppositeAppList.removeIfWithCount { packageName ->
-                        !PackageHelper.exists(packageName)
-                    }
+                    cleanedAppCount +=
+                        config.extraOppositeAppList.removeIfWithCount { packageName ->
+                            !PackageHelper.exists(packageName)
+                        }
                 }
 
                 // --- STEP 3: Clear uninstalled apps from templates ---
@@ -278,10 +250,11 @@ object ConfigManager {
 
                     if (count > 0) {
                         cleanedAppCount += count
-                        inConfig.templates[key] = JsonConfig.Template(
-                            isWhitelist = value.isWhitelist,
-                            appList = newList.toSet(),
-                        )
+                        inConfig.templates[key] =
+                            JsonConfig.Template(
+                                isWhitelist = value.isWhitelist,
+                                appList = newList.toSet(),
+                            )
                     }
                 }
 
@@ -301,12 +274,9 @@ object ConfigManager {
         if (deepCopy) {
             val scopeCopy = config.scope.toMutableMap()
             val templateCopy = config.templates.toMutableMap()
-            val settingsTemplateCopy = config.settingsTemplates.toMutableMap()
-
             return config.copy(
                 scope = scopeCopy,
                 templates = templateCopy,
-                settingsTemplates = settingsTemplateCopy,
             )
         }
 

@@ -2,7 +2,7 @@
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     app:cardCornerRadius="24dp"
-    app:cardBackgroundColor="?attr/colorSurfaceContainerLowest"
+    app:cardBackgroundColor="?attr/colorSecondaryContainer"
     app:strokeColor="@null"
     app:strokeWidth="0dp"
     android:layout_width="match_parent"
@@ -21,26 +21,34 @@
             android:layout_height="24dp"
             android:layout_marginEnd="12dp"
             android:src="@drawable/ic_outline_layers_24"
-            app:tint="?attr/colorPrimary" />
+            app:tint="?attr/colorOnSecondaryContainer" />
 
-        <TextView
-            android:id="@+id/card_title"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-            android:textColor="?attr/colorOnSurface" />
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/card_state"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/chip_bg_ok"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp"
-            android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
-            android:textColor="?attr/colorOnPrimary" />
-    </LinearLayout>
+            <TextView
+                android:id="@+id/card_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                android:textColor="?attr/colorOnSecondaryContainer"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/card_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/chip_bg_ok"
+                android:paddingHorizontal="4dp"
+                android:paddingVertical="2dp"
+                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                android:textColor="?attr/colorOnPrimary" />
+</LinearLayout>
+</LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

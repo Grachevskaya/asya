@@ -74,12 +74,6 @@ class HostContext(
     fun appThemeStyle(): Int =
         hostedResources.getIdentifier("AppTheme", "style", MANAGER_PACKAGE)
 
-    /** The theme of this apk, by name, so nothing needs a resource id at compile time. */
-    fun themeOf(name: String): Resources.Theme = hostedResources.newTheme().apply {
-        val id = hostedResources.getIdentifier(name, "style", MANAGER_PACKAGE)
-        if (id != 0) applyStyle(id, true)
-    }
-
     private companion object {
         const val MANAGER_PACKAGE = "io.github.grachevskaya.asya"
     }

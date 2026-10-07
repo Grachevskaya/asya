@@ -4,21 +4,35 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="?attr/colorSurfaceContainer"
     android:transitionGroup="true"
     tools:context="io.github.grachevskaya.asya.ui.fragment.AppSelectFragment">
 
     <com.google.android.material.appbar.AppBarLayout
+        style="@style/Widget.Material3Expressive.AppBarLayout"
         android:background="@android:color/transparent"
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        app:liftOnScroll="true">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
+        <com.google.android.material.appbar.CollapsingToolbarLayout
+            android:id="@+id/collapsing"
             android:layout_width="match_parent"
-            android:layout_height="?actionBarSize"
-            android:elevation="0dp" />
-    </com.google.android.material.appbar.AppBarLayout>
+            android:layout_height="wrap_content"
+            app:titleCollapseMode="scale"
+            app:expandedTitleTextAppearance="@style/TextAppearance.Material3.HeadlineMedium"
+            app:collapsedTitleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
+
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="?actionBarSize"
+                app:layout_collapseMode="pin"
+                android:elevation="0dp" />
+</com.google.android.material.appbar.CollapsingToolbarLayout>
+</com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -31,7 +45,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:scrollbars="vertical">
+            android:scrollbars="vertical"
+            android:paddingBottom="16dp">
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -46,8 +61,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
 
-            </FrameLayout>
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</FrameLayout>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    </LinearLayout>
+</LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

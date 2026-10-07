@@ -1,7 +1,6 @@
 package io.github.grachevskaya.asya.zygote.service
 
 import io.github.grachevskaya.asya.common.FilterHolder
-import io.github.grachevskaya.asya.common.PresetCache
 import io.github.grachevskaya.asya.common.RiskyPackageUtils
 
 class AsyaServiceDataHolder {
@@ -14,13 +13,20 @@ class AsyaServiceDataHolder {
 
     fun findCallerByUid(uid: Int) = uidHideCache.firstOrNull { it.first == uid }?.second
 
-    fun shouldHideFromUid(uid: Int, query: String?): Boolean? {
+    fun shouldHideFromUid(
+        uid: Int,
+        query: String?,
+    ): Boolean? {
         if (query == null) return null
 
         return uidHideCache.firstOrNull { it.first == uid && it.third.contains(query) } != null
     }
 
-    fun putShouldHideUidCache(uid: Int, caller: String, query: String) {
+    fun putShouldHideUidCache(
+        uid: Int,
+        caller: String,
+        query: String,
+    ) {
         val findList = uidHideCache.firstOrNull { it.first == uid }
         if (findList != null) {
             findList.third.add(query)
@@ -61,9 +67,6 @@ class AsyaServiceDataHolder {
             when (filterType) {
                 FilterHolder.FilterType.PACKAGE_MANAGER -> filterCount.packageManagerCount += amount
                 FilterHolder.FilterType.ACTIVITY_LAUNCH -> filterCount.activityLaunchCount += amount
-                FilterHolder.FilterType.INSTALLER -> filterCount.installerCount += amount
-                FilterHolder.FilterType.SETTINGS -> filterCount.settingsCount += amount
-                FilterHolder.FilterType.OTHERS -> filterCount.othersCount += amount
             }
         }
 

@@ -18,7 +18,6 @@ import io.github.grachevskaya.asya.common.Utils.binderLocalScope
 import io.github.grachevskaya.asya.common.Utils.containsMultiple
 import io.github.grachevskaya.asya.common.Utils.getPackageInfoCompat
 import io.github.grachevskaya.asya.common.BuildConfig
-import io.github.grachevskaya.asya.zygote.Magic
 import io.github.grachevskaya.asya.zygote.util.Logcat.logE
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logV

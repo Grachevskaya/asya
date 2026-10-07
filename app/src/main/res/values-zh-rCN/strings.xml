@@ -4,6 +4,7 @@
     <string name="title_logs">日志</string>
     <string name="title_settings">设置</string>
     <string name="title_template_manage">模板管理</string>
+    <string name="title_template_settings">模板配置</string>
     <string name="title_app_manage">应用管理</string>
     <string name="title_app_select">选择应用</string>
     <string name="title_app_settings">应用设置</string>
@@ -23,51 +24,37 @@
     <string name="yes">是</string>
     <string name="no">否</string>
     <string name="search">搜索</string>
-    <string name="add">添加</string>
     <string name="edit">编辑</string>
     <string name="follow_system">跟随系统</string>
     <!-- Home -->
-    <string name="home_xposed_activated">模块已激活 [%s]</string>
-    <string name="home_xposed_not_activated">模块未激活</string>
     <string name="home_xposed_service_on">系统服务运行中 [%d]</string>
     <string name="home_xposed_service_off">系统服务未运行</string>
-    <string name="home_xposed_filter_count">asya 进行了 %d 次拦截</string>
-    <string name="home_manage">管理</string>
     <string name="home_backup_and_restore">备份 &amp; 还原</string>
-    <string name="home_figures_filters">次拦截</string>
-    <string name="home_figures_hooks">个 apk 挂钩</string>
-    <string name="home_figures_kernel">内核层</string>
-    <string name="home_figures_service">系统服务</string>
-    <string name="home_figures_kernel_value">uid %1$s · setuid %2$s</string>
     <string name="home_figures_none">--</string>
     <string name="home_card_zygote">Zygote</string>
     <string name="home_card_kernel">内核</string>
     <string name="home_card_loaded">已加载</string>
     <string name="home_card_not_loaded">未加载</string>
-    <string name="home_row_hooks">挂钩状态</string>
+    <string name="home_faq_title">常见问题</string>
+    <string name="home_faq_create">创建模板\n在「模板管理」中创建模板。</string>
+    <string name="home_faq_apply">应用模板\n打开「应用管理」，选择应用、启用隐藏，然后选择要使用的模板。</string>
+    <string name="home_faq_mode">工作模式\n黑名单隐藏模板中列出的应用；白名单隐藏模板中未列出的应用。</string>
+    <string name="home_faq_settings">应用设置\n可以为单个应用添加额外可见或不可见的应用，也可以选择是否排除系统应用。</string>
+    <string name="home_faq_effect">修改后立刻生效。</string>
     <string name="home_row_service">系统服务</string>
-    <string name="home_row_apk">apk 挂钩</string>
     <string name="home_hook_inode">inode</string>
     <string name="home_hook_find_user">find_user</string>
     <string name="home_hook_cred">cred_commit</string>
     <string name="home_row_manager">模块版本</string>
-    <string name="home_row_kernel">内核模块</string>
     <string name="home_row_filters">已拦截请求</string>
     <string name="home_backup_config">备份配置</string>
     <string name="home_restore_config">还原配置</string>
     <string name="home_import_failed">导入失败</string>
     <string name="home_export_failed">导出备份文件失败</string>
     <string name="home_exported">备份完成</string>
-    <string name="home_migrate_data_fix_button">一键修复</string>
-    <string name="home_migrate_data">一键修复</string>
-    <string name="home_migrate_data_summary">此操作将卸载其它HMA分支，在这之前，是否将其数据迁移到asya？</string>
-    <string name="home_migrate_data_failed">迁移数据失败：检测到多个其他HMA分支</string>
-    <string name="home_migrate_data_completed">修复完成！需要重启设备。</string>
-    <string name="home_migrate_uninstall_only">仅卸载</string>
     <!-- Backup & Restore -->
     <string name="backup_restore_apps">应用配置</string>
     <string name="backup_restore_templates">应用模板</string>
-    <string name="backup_restore_settings_templates">设置模板</string>
     <string name="backup_restore_append">增量还原</string>
     <string name="backup_restore_items_count">%d 项</string>
     <!-- App select -->
@@ -90,7 +77,6 @@
     <string name="template_delete_title">删除模板</string>
     <string name="template_name_already_exist">模板名称已存在</string>
     <string name="template_applied_count">%d 个应用使用此模版</string>
-    <string name="template_setting_count">已添加 %d 个设置</string>
     <string name="template_apps_visible_count">%d 个应用可见</string>
     <string name="template_apps_invisible_count">%d 个应用不可见</string>
     <!-- App settings -->
@@ -100,12 +86,10 @@
     <string name="app_exclude_system_apps">始终显示系统应用</string>
     <string name="app_exclude_system_apps_summary">警告：关闭此选项可能导致应用或系统崩溃</string>
     <string name="app_template_using">已启用 %d 个应用模板</string>
-    <string name="app_settings_template_using">已启用 %d 个设置模板</string>
     <string name="app_extra_apps_visible_count">%d 个额外可见的应用</string>
     <string name="app_extra_apps_invisible_count">%d 个额外不可见的应用</string>
     <string name="app_warning_risky_package_title">风险应用警告</string>
     <string name="app_warning_risky_package_desc">此应用被标记为风险应用，对其隐藏可能会导致问题。是否继续？</string>
-    <string name="app_spoof">伪装安装来源</string>
     <string name="app_exclude_target_installation_source">排除此应用</string>
     <string name="app_force_stop_warning">配置已保存，需要重启目标应用</string>
     <string name="app_invert_activity_launch_protection">可疑Activity拦截特例</string>
@@ -114,10 +98,6 @@
     <string name="app_force_stop_launch">强制停止并打开</string>
     <string name="app_launch">打开</string>
     <string name="app_launch_failed">应用打开失败，请检查日志以获取更多详细信息</string>
-    <string name="app_restrict_zygote_permissions">限制Zygote权限</string>
-    <string name="settings_templates_database">设置数据库</string>
-    <string name="settings_templates_name">设置名称</string>
-    <string name="settings_templates_value">设置值</string>
     <!-- Settings templates - basic configuration types -->
     <string name="settings_templates_custom">自定义设置项</string>
     <string name="settings_templates_random_ssaid">随机SSAID</string>
@@ -125,6 +105,13 @@
     <string name="logs_save">保存日志</string>
     <string name="logs_clear">清空日志</string>
     <string name="logs_empty">没有可保存的日志</string>
+    <string name="logs_categories_title">各项计数的含义</string>
+    <string name="stats_total_title">累计拦截</string>
+    <string name="stats_total_pkg_mgr">应用列表查询</string>
+    <string name="stats_total_act_launch">Activity 启动</string>
+    <string name="stats_empty">还没有拦截记录</string>
+    <string name="logs_categories_pkg_mgr">已安装应用 —— 应用读取了应用列表</string>
+    <string name="logs_categories_act_launch">Activity 启动 —— 应用试图打开其它应用</string>
     <string name="logs_saved">日志已保存</string>
     <!-- Filter logs -->
     <string name="title_filter_logs">拦截日志</string>
@@ -155,8 +142,6 @@
     <string name="settings_clear_uninstalled_app_configs_summary">清除已卸载应用的配置，重新安装应用后需要重新进行配置</string>
     <string name="settings_no_undone_warning">此操作无法撤销</string>
     <string name="settings_error_only_log">精简日志</string>
-    <string name="settings_enable_internet">允许网络连接</string>
-    <string name="settings_enable_internet_summary">禁用此选项后，asya 无法在线检查更新或使用其他联网功能</string>
     <string name="settings_default_config">默认隐藏配置</string>
     <string name="settings_default_config_summary">为新安装的应用自动套用的配置项，已有配置的应用不受影响（不会影响当前已安装的应用）</string>
     <string name="settings_webview_protection">WebView 补丁</string>
@@ -165,8 +150,6 @@
     <string name="settings_theme">主题</string>
     <string name="settings_system_theme_color">跟随系统主题色</string>
     <string name="settings_theme_color">主题颜色</string>
-    <string name="settings_pure_black_dark_theme">纯黑主题</string>
-    <string name="settings_pure_black_dark_theme_summary">当深色主题启用时使用纯黑主题</string>
     <string name="settings_service">服务</string>
     <string name="settings_reset_default">重置所有配置</string>
     <string name="settings_reset_default_summary">恢复到初始配置，并清空所有自定义内容</string>
@@ -175,21 +158,9 @@
     <string name="settings_force_clean_env">强制清理运行环境（Root）</string>
     <string name="settings_force_clean_env_summary">系统服务无法启动时可尝试使用此选项</string>
     <string name="settings_force_clean_env_toast_successful">运行环境清理完成！</string>
-    <string name="settings_update">更新</string>
-    <string name="settings_disable_update">禁用更新通知</string>
     <string name="title_bulk_config_wizard">批量配置向导</string>
     <!-- About -->
     <string name="about_description">在沃尔库塔 5，雪覆盖着街道，研究所的窗户总是关着。Asya 注意到那些无人呼唤的名字，即使城里其他人照常生活。Tosya 和她在一起，一如既往。\n\n有些人就这样不见了。没有人为此不安。\n\n窗外，一只鸟飞过。更远处，一道微弱的信号继续向宇宙传去。Asya 想起 Tosya：她说不清 Tosya 陪在自己身边已经多久了。</string>
-    <string name="about_how_to_use_title">模块帮助文档</string>
-    <string name="about_how_to_use_description_1">在「模板管理」里新建模板，再到「应用管理」中把模板套用到应用上（打开「启用隐藏」）。
-一个模板可以给任意多个应用使用；某个应用还可以额外指定自己的可见/不可见例外。
-
-工作模式：黑名单模板里列出的应用对它不可见；白名单模板反之。
-应用模板：选择这个应用要用的模板。
-额外可见/不可见应用：在模板之外再单独加减例外。
-排除系统应用：把系统应用也纳入隐藏范围。</string>
-    <string name="about_how_to_use_description_2">修改后立刻生效：规则在 system_server 里的服务中计算，并在同一趟里交给内核模块 —— 隐藏发生在内核侧、按 uid 生效，在查询被回答之前就已完成。</string>
-    <string name="about_how_to_use_description_3">本模块本身就是 Zygisk 模块，不需要再另装一个模块配合。管理器随包提供，点 KernelSU 的「动作」按钮即可在宿主进程里打开。</string>
     <string name="about_developer">开发者</string>
     <string name="about_open_source">开放源代码许可</string>
     <!-- Colors -->
@@ -216,12 +187,6 @@
     <string name="dark_theme">深色主题</string>
     <string name="dark_theme_off">始终关闭</string>
     <string name="dark_theme_on">始终开启</string>
-    <string name="sick_mode_title">安全模式</string>
-    <string name="sick_mode_description">asya 检测到同类模块（原版隐藏应用列表或其分支），为避免冲突已禁用自身核心功能</string>
-    <string name="sick_mode_notice"></string>
-    <string name="settings_input_method">输入法</string>
     <string name="kernel_card_absent">内核模块未加载</string>
     <string name="kernel_card_detail">apk 挂钩 %1$s 个（本次失败 %2$s）</string>
-    <string name="kernel_card_hooks">内核钩子 native %1$s/%2$s · compat %3$s/%4$s</string>
-    <string name="kernel_card_geometry">uid 层 %1$s · setuid 层 %2$s</string>
 </resources>

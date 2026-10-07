@@ -3,11 +3,14 @@ package io.github.grachevskaya.asya
 import android.app.Application
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
+import io.github.grachevskaya.asya.common.ServiceBridge
 import io.github.grachevskaya.asya.receiver.AppChangeReceiver
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
+import io.github.grachevskaya.asya.ui.util.StatusRefresh
 import io.github.grachevskaya.asya.util.ConfigUtils.getLocale
+import io.github.grachevskaya.asya.util.PackageHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import java.util.Locale
@@ -18,8 +21,6 @@ class MyApp : Application() {
     }
 
     val globalScope = CoroutineScope(Dispatchers.Default)
-    var updateDialogSkipped: Boolean = false
-
     fun loadConfiguration() {
         if (ServiceClient.serviceVersion > 0) {
             ConfigManager.init()
@@ -44,6 +45,13 @@ class MyApp : Application() {
         asyaApp = this
         loadPreferences()
         AppChangeReceiver.register(this)
+
+        // The service's word, over the bridge the host registered: a transaction is over, so the
+        // tables may be read again. The package broadcasts above arrive earlier than that.
+        ServiceBridge.onServiceEvent = {
+            PackageHelper.invalidateCache()
+            StatusRefresh.trigger()
+        }
 
         val handler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

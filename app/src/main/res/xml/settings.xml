@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <PreferenceCategory android:title="@string/settings_language">
+<PreferenceCategory android:title="@string/settings_language">
         <ListPreference
             android:defaultValue="SYSTEM"
             android:icon="@drawable/outline_language_24"
             android:key="language"
             android:summary="%s"
             android:title="@string/settings_language" />
-    </PreferenceCategory>
+</PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/settings_theme">
+<PreferenceCategory android:title="@string/settings_theme">
         <SwitchPreferenceCompat
             android:defaultValue="true"
             android:disableDependentsState="true"
@@ -37,24 +37,9 @@
             android:summary="%s"
             app:singleLineTitle="false"
             android:title="@string/dark_theme" />
-        <SwitchPreferenceCompat
-            android:icon="@drawable/outline_invert_colors_24"
-            android:key="blackDarkTheme"
-            android:summary="@string/settings_pure_black_dark_theme_summary"
-            app:singleLineTitle="false"
-            android:title="@string/settings_pure_black_dark_theme" />
-        <SwitchPreferenceCompat
-            android:icon="@drawable/outline_hide_image_24"
-            android:key="hideIcon"
-            android:summary="@string/settings_hide_icon_summary"
-            app:singleLineTitle="false"
-            android:title="@string/settings_hide_icon" />
-        <io.github.grachevskaya.asya.ui.preference.AppIconPreference
-            android:key="launcherIcon"
-            android:title="@string/settings_launcher_icon" />
-    </PreferenceCategory>
+</PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/settings_module">
+<PreferenceCategory android:title="@string/settings_module">
         <Preference
             app:widgetLayout="@layout/preference_sub_menu_indicator"
             android:icon="@drawable/add_moderator_24px"
@@ -103,9 +88,9 @@
             android:summary="%s"
             app:singleLineTitle="false"
             android:title="@string/settings_max_log_size" />
-    </PreferenceCategory>
+</PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/settings_service">
+<PreferenceCategory android:title="@string/settings_service">
         <Preference
             android:icon="@drawable/outline_delete_24"
             android:key="clearUninstalledPackageConfigs"
@@ -121,26 +106,9 @@
             android:key="forceCleanEnv"
             android:summary="@string/settings_force_clean_env_summary"
             android:title="@string/settings_force_clean_env" />
-    </PreferenceCategory>
+</PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/settings_update">
-        <SwitchPreferenceCompat
-            android:icon="@drawable/plug_connect_24px"
-            android:key="enableInternet"
-            android:defaultValue="false"
-            app:singleLineTitle="false"
-            android:title="@string/settings_enable_internet"
-            android:summary="@string/settings_enable_internet_summary" />
-        <SwitchPreferenceCompat
-            android:dependency="enableInternet"
-            android:disableDependentsState="true"
-            android:icon="@drawable/outline_update_disabled_24"
-            android:key="disableUpdate"
-            app:singleLineTitle="false"
-            android:title="@string/settings_disable_update" />
-    </PreferenceCategory>
-
-    <PreferenceCategory android:title="@string/home_backup_and_restore">
+<PreferenceCategory android:title="@string/home_backup_and_restore">
         <Preference
             android:icon="@drawable/outline_backup_24"
             android:key="backupConfig"
@@ -151,13 +119,13 @@
             android:key="restoreConfig"
             app:singleLineTitle="false"
             android:title="@string/home_restore_config" />
-    </PreferenceCategory>
+</PreferenceCategory>
 
-    <PreferenceCategory>
+<PreferenceCategory>
         <Preference
             android:icon="@drawable/outline_info_24"
             android:key="about"
             app:singleLineTitle="false"
             android:title="@string/title_about" />
-    </PreferenceCategory>
+</PreferenceCategory>
 </PreferenceScreen>

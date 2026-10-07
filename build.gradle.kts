@@ -2,6 +2,7 @@ import com.android.build.api.dsl.ApkSigningConfig
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.dsl.LibraryExtension
+import com.android.repository.Revision
 import java.util.Properties
 
 plugins {
@@ -74,7 +75,7 @@ extra["minSdkVer"] = minSdkVer
 val targetSdkVer = 37
 extra["targetSdkVer"] = targetSdkVer
 
-val minorSdkVer = 2
+val minorSdkVer = 0
 extra["minorSdkVer"] = minorSdkVer
 
 val appVerCode = gitCommitCount + 0x6f7373 // the commit count over this lineage's fixed base
@@ -125,6 +126,15 @@ fun Project.createProvidedSigningConfig(android: CommonExtension): ApkSigningCon
 }
 
 private fun CommonExtension.applySharedAndroidConfig() {
+    buildToolsVersion = providers.gradleProperty("android.buildToolsVersion").orNull
+        ?: file(localProperties.getProperty("sdk.dir")
+            ?: providers.environmentVariable("ANDROID_HOME")
+                .orElse(providers.environmentVariable("ANDROID_SDK_ROOT")).get())
+            .resolve("build-tools").listFiles().orEmpty()
+            .filter { it.isDirectory && it.resolve("aapt2").isFile }
+            .maxByOrNull { Revision.parseRevision(it.name) }?.name
+        ?: throw GradleException("No Android Build Tools installation found")
+
     compileSdk {
         version = release(targetSdkVer) {
             minorApiLevel = minorSdkVer

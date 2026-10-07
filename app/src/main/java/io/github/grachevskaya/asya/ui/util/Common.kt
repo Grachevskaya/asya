@@ -26,8 +26,3 @@ inline val Int.dpToPx: Float
         Resources.getSystem().displayMetrics
     )
 
-val isTestBuild get() = BuildConfig.VERSION_NAME.let { name ->
-    name.count { it == '-' } != 1 ||
-    name.count { it == '+' } > 0 ||
-    name.split('-').last().length == 8
-}
