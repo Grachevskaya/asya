@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory android:title="@string/backup_restore_apps">
+
+        <Preference
+            android:icon="@drawable/outline_android_24"
+            android:key="chooseApps"
+            app:singleLineTitle="false"
+            android:title="@string/restore_choose_apps" />
+
+        <ListPreference
+            android:icon="@drawable/outline_settings_backup_restore_24"
+            android:key="appsMode"
+            app:singleLineTitle="false"
+            android:summary="%s"
+            android:title="@string/restore_mode" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/backup_restore_templates">
+
+        <Preference
+            android:icon="@drawable/ic_outline_layers_24"
+            android:key="chooseTemplates"
+            app:singleLineTitle="false"
+            android:title="@string/restore_choose_templates" />
+
+        <ListPreference
+            android:icon="@drawable/outline_settings_backup_restore_24"
+            android:key="templatesMode"
+            app:singleLineTitle="false"
+            android:summary="%s"
+            android:title="@string/restore_mode" />
+    </PreferenceCategory>
+
+    <PreferenceCategory>
+
+        <Preference
+            android:icon="@drawable/outline_settings_backup_restore_24"
+            android:key="runRestore"
+            app:singleLineTitle="false"
+            android:title="@string/home_restore_config" />
+    </PreferenceCategory>
+</PreferenceScreen>

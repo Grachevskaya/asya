@@ -7,10 +7,34 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceGroupAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.MaterialShapeDrawable
-import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
+
+/** The radius a group's own edges wear, and the one the rows between them wear. */
+
+/** Where the row holding this view sits in its group, asked of the list it lives in. */
+@android.annotation.SuppressLint("RestrictedApi")
+fun View.rowGroupInList(): RowGroup {
+    val list = parent as? RecyclerView ?: return RowGroup.Single
+    //noinspection RestrictedApi
+    val adapter = list.adapter as? PreferenceGroupAdapter ?: return RowGroup.Single
+    val position = list.getChildAdapterPosition(this)
+    if (position == RecyclerView.NO_POSITION) return RowGroup.Single
+
+    fun isGroupTitle(at: Int) = adapter.getItem(at) is PreferenceCategory
+
+    var first = position
+    while (first > 0 && !isGroupTitle(first - 1)) first--
+    var last = position
+    while (last + 1 < adapter.itemCount && !isGroupTitle(last + 1)) last++
+
+    return when {
+        first == last -> RowGroup.Single
+        position == first -> RowGroup.Top
+        position == last -> RowGroup.Bottom
+        else -> RowGroup.Middle
+    }
+}
 
 /**
  * The rows a settings screen is made of, in the language the rest of the manager speaks: one surface
@@ -28,18 +52,6 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
     //noinspection RestrictedApi
     val adapter = list.adapter as? PreferenceGroupAdapter ?: return
     val inset = 16.dpToPx.toInt()
-    val outer =
-        cornerSize(
-            com.google.android.material.R.attr.shapeAppearanceCornerLarge,
-            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Large,
-            16,
-        )
-    val inner =
-        cornerSize(
-            com.google.android.material.R.attr.shapeAppearanceCornerSmall,
-            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Small,
-            8,
-        )
     val card =
         MaterialShapeDrawable().apply {
             fillColor =
@@ -51,6 +63,9 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
     list.setBackgroundColor(themeColor(com.google.android.material.R.attr.colorSurfaceContainer))
     list.setPadding(0, 0, 0, inset)
     list.clipToPadding = false
+    // A row that opens its card makes the screen scrollable, and the list’s own bar then turns up
+    // in the gutter beside that card. Material draws no such bar, and the rows say where you are.
+    list.isVerticalScrollBarEnabled = false
     while (list.itemDecorationCount > 0) {
         list.removeItemDecorationAt(0)
     }
@@ -58,17 +73,20 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
     //noinspection RestrictedApi
     fun isGroupTitle(position: Int) = position != RecyclerView.NO_POSITION && adapter.getItem(position) is PreferenceCategory
 
-    fun edges(position: Int): Pair<Float, Float> {
+    /** Where the row at [position] sits in its group, which is what decides its corners. */
+    fun groupOf(position: Int): RowGroup {
         var first = position
         while (first > 0 && !isGroupTitle(first - 1)) first--
         var last = position
         //noinspection RestrictedApi
         while (last + 1 < adapter.itemCount && !isGroupTitle(last + 1)) last++
 
-        return Pair(
-            if (position == first) outer else inner,
-            if (position == last) outer else inner,
-        )
+        return when {
+            first == last -> RowGroup.Single
+            position == first -> RowGroup.Top
+            position == last -> RowGroup.Bottom
+            else -> RowGroup.Middle
+        }
     }
 
     list.addItemDecoration(
@@ -102,15 +120,8 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
                     val position = parent.getChildAdapterPosition(child)
                     if (position == RecyclerView.NO_POSITION || isGroupTitle(position)) continue
 
-                    val (top, bottom) = edges(position)
                     card.shapeAppearanceModel =
-                        card.shapeAppearanceModel
-                            .toBuilder()
-                            .setTopLeftCorner(CornerFamily.ROUNDED, top)
-                            .setTopRightCorner(CornerFamily.ROUNDED, top)
-                            .setBottomLeftCorner(CornerFamily.ROUNDED, bottom)
-                            .setBottomRightCorner(CornerFamily.ROUNDED, bottom)
-                            .build()
+                        parent.context.groupedRowShape(groupOf(position), RowCorners.List)
                     card.setBounds(child.left, child.top, child.right, child.bottom)
                     card.draw(canvas)
                 }
@@ -125,30 +136,7 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
             return
         }
 
-        val (top, bottom) = edges(position)
-
-        // The press, and only the press: the card under it is drawn by the decoration, so this is a
-        // ripple masked to the row's own shape -- which is what keeps it inside the rounded corners.
-        child.background =
-            android.graphics.drawable.RippleDrawable(
-                android.content.res.ColorStateList.valueOf(
-                    themeColor(android.R.attr.colorControlHighlight),
-                ),
-                null,
-                MaterialShapeDrawable(
-                    card.shapeAppearanceModel
-                        .toBuilder()
-                        .setTopLeftCorner(CornerFamily.ROUNDED, top)
-                        .setTopRightCorner(CornerFamily.ROUNDED, top)
-                        .setBottomLeftCorner(CornerFamily.ROUNDED, bottom)
-                        .setBottomRightCorner(CornerFamily.ROUNDED, bottom)
-                        .build(),
-                ).apply {
-                    fillColor =
-                        android.content.res.ColorStateList
-                            .valueOf(android.graphics.Color.WHITE)
-                },
-            )
+        child.background = list.context.groupedRowRipple(groupOf(position), RowCorners.List)
     }
 
     list.addOnChildAttachStateChangeListener(

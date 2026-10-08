@@ -98,18 +98,18 @@ abstract class AppSelectFragment : Fragment(R.layout.fragment_app_select) {
             registerOnBackCallback { onBack() }
         }
 
-        binding.collapsing.title = getFragmentTitle()
+        binding.pageBar.collapsing.title = getFragmentTitle()
         setupToolbar(
-            toolbar = binding.toolbar,
+            toolbar = binding.pageBar.toolbar,
             title = getFragmentTitle(),
             navigationIcon = if (showBackButton) R.drawable.baseline_arrow_back_24 else null,
             navigationOnClick = if (showBackButton) View.OnClickListener { onBack() } else null,
             menuRes = R.menu.menu_app_list,
             onMenuOptionSelected = this::onMenuOptionSelected,
         )
-        binding.toolbar.title = null
+        binding.pageBar.toolbar.title = null
 
-        with(binding.toolbar.menu) {
+        with(binding.pageBar.toolbar.menu) {
             val searchView = findItem(R.id.menu_search).actionView as SearchView
             searchView.setOnQueryTextListener(
                 object : SearchView.OnQueryTextListener {

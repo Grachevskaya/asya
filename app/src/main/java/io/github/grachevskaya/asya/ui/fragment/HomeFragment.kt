@@ -41,7 +41,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         view: View,
         savedInstanceState: Bundle?,
     ) {
-        with(binding.toolbar) {
+        binding.pageBar.collapsing.title = getString(R.string.app_name)
+        with(binding.pageBar.toolbar) {
             setupToolbar(
                 toolbar = this,
                 title = getString(R.string.app_name),
@@ -164,6 +165,26 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private fun ViewHalfCardBinding.setState(loaded: Boolean) {
         cardState.text =
             getString(if (loaded) R.string.home_card_loaded else R.string.home_card_not_loaded)
+
+        // The card is the state, not only the chip on it: when nothing runs, the surface and
+        // everything written on it take the error roles, so the half card reads as a warning.
+        val surface =
+            if (loaded) {
+                com.google.android.material.R.attr.colorSecondaryContainer
+            } else {
+                com.google.android.material.R.attr.colorErrorContainer
+            }
+        val onSurface =
+            if (loaded) {
+                com.google.android.material.R.attr.colorOnSecondaryContainer
+            } else {
+                com.google.android.material.R.attr.colorOnErrorContainer
+            }
+
+        root.setCardBackgroundColor(themeColor(surface))
+        cardIcon.themedTint(onSurface)
+        cardTitle.setTextColor(themeColor(onSurface))
+
         // The chip carries its own surface and label, instead of a shape drawn beside it.
         cardState.chipBackgroundColor =
             ColorStateList.valueOf(

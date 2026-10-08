@@ -1,6 +1,5 @@
 package io.github.grachevskaya.asya.ui.fragment
 
-import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
@@ -10,13 +9,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.annotation.DrawableRes
-import androidx.core.animation.doOnEnd
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.shape.ShapeAppearanceModel
@@ -27,11 +25,12 @@ import io.github.grachevskaya.asya.data.AppConstants
 import io.github.grachevskaya.asya.databinding.FragmentAboutBinding
 import io.github.grachevskaya.asya.databinding.FragmentAboutListItemBinding
 import io.github.grachevskaya.asya.ui.util.AccessibilityUtils
+import io.github.grachevskaya.asya.ui.util.Reveal
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.attrDrawable
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.homeItemBackgroundColor
-import io.github.grachevskaya.asya.ui.util.navController
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
+import io.github.grachevskaya.asya.ui.util.setupToolbar
 import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +39,9 @@ import kotlinx.coroutines.withContext
 @Suppress("DEPRECATION")
 class AboutFragment : Fragment(R.layout.fragment_about) {
     private val binding by viewBinding(FragmentAboutBinding::bind)
+
+    /** The three moves that open the credits are written once, in the controller. */
+    private var reveal: Reveal? = null
 
     override fun onViewCreated(
         view: View,
@@ -59,12 +61,27 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             }
         }
 
-        with(binding.aboutHeader) {
-            with(backButton.parent as View) {
-                setOnClickListener { navController.navigateUp() }
-                backgroundTintList = tint
-            }
+        // The bar the other sub pages stand under: it carries the title and the way back.
+        with(binding.pageBar.toolbar) {
+            setupToolbar(
+                toolbar = this,
+                title = getString(R.string.title_about),
+                navigationIcon = R.drawable.baseline_arrow_back_24,
+                navigationOnClick = { findNavController().navigateUp() },
+            )
+            title = null
+        }
+        binding.pageBar.collapsing.title = getString(R.string.title_about)
 
+        reveal =
+            Reveal(
+                chevron = binding.expandDevs,
+                folded = binding.listDeveloper,
+                widthOf = { binding.listPeople.width },
+                onClosed = { binding.listPeople.styleSegmentedCards(requireContext()) },
+            )
+
+        with(binding.aboutHeader) {
             appIcon.setImageResource(AppConstants.appIcon)
 
             appName.setText(R.string.app_name)
@@ -144,22 +161,13 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             // The credits are folded away: the two halves are listed side by side, and neither is in
             // the way of what the page is for.
             setOnClickListener {
-                val folded = binding.listDeveloper
-                val opening = !folded.isVisible
+                reveal?.toggle()
 
-                binding.expandDevs
-                    .animate()
-                    .rotation(if (opening) 180.0f else 0.0f)
-                    .setDuration(220L)
-                    .start()
-
-                if (opening) folded.visibility = View.VISIBLE
-
-                // The visible rows decide where the group's large corners go, and the group is the
-                // whole list: the two credited halves and the folded one are one surface.
+                // The visible rows decide where the group’s large corners go, and the group is the
+                // whole list: the two credited halves and the folded one are one surface. This has
+                // to come after the folded half has been shown or hidden, or the corners are the
+                // ones the group wore a moment ago.
                 binding.listPeople.styleSegmentedCards(requireContext())
-
-                unfold(folded, opening)
             }
         }
 
@@ -266,58 +274,5 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             intent.data = url.toUri()
             startActivity(intent)
         }
-    }
-
-    /*
-     * The folded half opens by growing: the list is measured at the height its rows ask for and is
-     * then laid out from nothing up to it, with the rows clipped by the list on the way. What moves
-     * is the list making room for itself, not its contents fading in.
-     */
-    private fun unfold(
-        list: View,
-        opening: Boolean,
-    ) {
-        if (opening) {
-            val width = binding.listPeople.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-            list.measure(
-                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-            )
-        }
-
-        val full = if (opening) list.measuredHeight else list.height
-
-        if (!AccessibilityUtils.isAnimationEnabled(requireContext().contentResolver)) {
-            list.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
-            if (!opening) list.visibility = View.GONE
-            list.requestLayout()
-            if (!opening) binding.listPeople.styleSegmentedCards(requireContext())
-            return
-        }
-
-        val from = if (opening) 0 else full
-        list.layoutParams.height = from
-        list.requestLayout()
-
-        ValueAnimator
-            .ofInt(from, if (opening) full else 0)
-            .apply {
-                duration = 220L
-                interpolator = FastOutSlowInInterpolator()
-                addUpdateListener {
-                    list.layoutParams.height = it.animatedValue as Int
-                    list.requestLayout()
-                }
-                doOnEnd {
-                    list.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                    if (!opening) list.visibility = View.GONE
-                    list.requestLayout()
-
-                    // The corners follow the rows one can see: with the folded rows gone, the row that
-                    // is now last holds the group's large bottom one.
-                    if (!opening) binding.listPeople.styleSegmentedCards(requireContext())
-                }
-                start()
-            }
     }
 }

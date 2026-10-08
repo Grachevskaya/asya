@@ -20,7 +20,7 @@ class TabbedLogsFragment : Fragment() {
      * The two pages under the tabs share this page's bar and its indicator, and they are built by the
      * framework when the state is restored -- so they take no view of their own and ask here instead.
      */
-    internal val sharedToolbar get() = binding.toolbar
+    internal val sharedToolbar get() = binding.pageBar.toolbar
     internal val sharedLoadingIndicator get() = binding.loadingIndicator
 
     private val tabsList by lazy {
@@ -40,8 +40,8 @@ class TabbedLogsFragment : Fragment() {
         view: View,
         savedInstanceState: Bundle?,
     ) {
-        binding.collapsing.title = getString(R.string.title_logs)
-        binding.toolbar.title = null
+        binding.pageBar.collapsing.title = getString(R.string.title_logs)
+        binding.pageBar.toolbar.title = null
 
         with(binding.viewPager) {
             adapter =

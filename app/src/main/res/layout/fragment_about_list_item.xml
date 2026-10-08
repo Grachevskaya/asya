@@ -9,7 +9,6 @@
     android:layout_height="wrap_content">
 
     <LinearLayout
-        android:background="?selectableItemBackground"
         android:orientation="horizontal"
         android:paddingHorizontal="@dimen/item_padding_vertical"
         android:gravity="center"

@@ -8,30 +8,11 @@
     android:background="?attr/colorSurfaceContainer"
     tools:context=".ui.fragment.TabbedLogsFragment">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:background="@android:color/transparent"
-        android:id="@+id/app_bar"
+    <include
+        android:id="@+id/page_bar"
+        layout="@layout/view_page_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-
-        <com.google.android.material.appbar.CollapsingToolbarLayout
-            android:id="@+id/collapsing"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:title="@string/title_logs"
-            app:titleCollapseMode="scale"
-            app:expandedTitleTextAppearance="@style/TextAppearance.Material3.HeadlineMedium.Emphasized"
-            app:collapsedTitleTextAppearance="@style/TextAppearance.Material3.TitleLarge.Emphasized"
-            app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
-
-            <com.google.android.material.appbar.MaterialToolbar
-                android:id="@+id/toolbar"
-                android:layout_width="match_parent"
-                android:layout_height="?actionBarSize"
-                app:layout_collapseMode="pin"
-                android:elevation="0dp" />
-</com.google.android.material.appbar.CollapsingToolbarLayout>
-</com.google.android.material.appbar.AppBarLayout>
+        android:layout_height="wrap_content" />
 
     <com.google.android.material.tabs.TabLayout
         style="@style/Widget.Material3.TabLayout.Secondary"

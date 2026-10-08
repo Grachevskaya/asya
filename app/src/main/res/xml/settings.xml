@@ -105,19 +105,22 @@
 
 <PreferenceCategory android:title="@string/home_backup_and_restore">
         <Preference
+            app:widgetLayout="@layout/preference_sub_menu_indicator"
             android:icon="@drawable/outline_backup_24"
             android:key="backupConfig"
             app:singleLineTitle="false"
             android:title="@string/home_backup_config" />
         <Preference
+            app:widgetLayout="@layout/preference_sub_menu_indicator"
             android:icon="@drawable/outline_settings_backup_restore_24"
             android:key="restoreConfig"
             app:singleLineTitle="false"
             android:title="@string/home_restore_config" />
 </PreferenceCategory>
 
-<PreferenceCategory>
+<PreferenceCategory android:title="@string/settings_more">
         <Preference
+            app:widgetLayout="@layout/preference_sub_menu_indicator"
             android:icon="@drawable/outline_info_24"
             android:key="about"
             app:singleLineTitle="false"

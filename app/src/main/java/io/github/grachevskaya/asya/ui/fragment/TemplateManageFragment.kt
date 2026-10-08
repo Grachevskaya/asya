@@ -32,7 +32,7 @@ class TemplateManageFragment : Fragment(R.layout.fragment_template_manage) {
         binding.newWhitelistTemplate.background = requireContext().groupedRowBackground(RowGroup.Bottom)
 
         setupToolbar(
-            toolbar = binding.toolbar,
+            toolbar = binding.pageBar.toolbar,
             title = getString(R.string.title_template_manage),
             menuRes = R.menu.menu_template_manage,
             onMenuOptionSelected = {
@@ -49,8 +49,8 @@ class TemplateManageFragment : Fragment(R.layout.fragment_template_manage) {
             },
         )
 
-        binding.collapsing.title = getString(R.string.title_template_manage)
-        binding.toolbar.title = null
+        binding.pageBar.collapsing.title = getString(R.string.title_template_manage)
+        binding.pageBar.toolbar.title = null
 
         binding.newBlacklistTemplate.setOnClickListener {
             navigateToTemplateSettings(ConfigManager.TemplateInfo(null, ConfigManager.PTType.APP, false))

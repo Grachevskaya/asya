@@ -104,6 +104,40 @@ object ServiceBridge {
     @Volatile
     var host: Host? = null
 
+    /** Held for as long as it is registered: a binder with no reference would be collected. */
+    @Volatile
+    private var managerObserver: ManagerBinder? = null
+
+    @Volatile
+    private var managerRegistered = false
+
+    /**
+     * Puts the bridge in place from the manager’s side.
+     *
+     * The bridge used to ride on a registration the host process makes for itself, and whether the
+     * host makes one, and when, is the host’s business rather than this module’s: on this build it
+     * does not, so the module registers its own observer instead. It needs no permission for that,
+     * and the object it registers is the one the service’s handshake is answered by.
+     */
+    fun registerManagerObserver() {
+        if (managerRegistered) return
+
+        managerRegistered = true
+
+        // Built here and not as a field: the shape this extends is a stub the test runtime does not
+        // carry, and a field would be constructed while this class is initialised.
+        val observer = ManagerBinder()
+        managerObserver = observer
+
+        runCatching {
+            val activity = android.os.ServiceManager.getService("activity")
+
+            android.app.IActivityManager.Stub
+                .asInterface(activity)
+                ?.registerProcessObserver(observer)
+        }
+    }
+
     /** What the manager does when the service says a transaction is over: set by the manager. */
     @Volatile
     var onServiceEvent: (() -> Unit)? = null

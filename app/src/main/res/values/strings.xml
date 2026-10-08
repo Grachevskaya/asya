@@ -12,6 +12,7 @@
     <string name="title_app_manage">Manage apps</string>
     <string name="title_app_select">Select apps</string>
     <string name="title_app_settings">App settings</string>
+    <string name="settings_more">More</string>
     <string name="title_about">About</string>
 
     <string name="show_crash_log">Show crash log</string>
@@ -61,8 +62,17 @@
 
     <!-- Backup & Restore -->
     <string name="backup_restore_apps">App configs</string>
+    <string name="backup_content">What to back up</string>
+    <string name="backup_include_settings">Include the settings</string>
+    <string name="backup_include_settings_summary">Write the module’s settings into the backup as well</string>
+    <string name="backup_restore_content">What to restore</string>
     <string name="backup_restore_templates">Templates</string>
     <string name="backup_restore_append">Append</string>
+    <string name="restore_mode">Restore mode</string>
+    <string name="restore_choose_apps">Choose the apps to restore</string>
+    <string name="restore_choose_templates">Choose the templates to restore</string>
+    <string name="restore_mode_overwrite_summary">Replace what is already here with what the backup holds</string>
+    <string name="restore_mode_append_summary">Keep what is already here and add only what is missing</string>
     <string name="backup_restore_items_count">%d items</string>
 
     <!-- App select -->
@@ -133,6 +143,8 @@
     <!-- Settings -->
     <string name="settings_module">Module</string>
     <string name="settings_overwrite">Overwrite</string>
+    <string name="backup_restore_overwrite_summary">Overwrite the destination configuration</string>
+    <string name="backup_restore_how">How to restore</string>
     <string name="settings_overwritten">Overwritten</string>
     <string name="settings_overwrite_summary">This category items will be forced as enabled if the switches are checked</string>
     <string name="settings_default_value">Default value: %s</string>

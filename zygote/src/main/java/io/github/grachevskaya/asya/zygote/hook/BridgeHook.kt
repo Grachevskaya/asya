@@ -5,15 +5,16 @@ import io.github.grachevskaya.asya.common.ServiceBridge
 import io.github.grachevskaya.asya.common.Utils.getPackageUidCompat
 import io.github.grachevskaya.asya.zygote.host.HostConstants
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
+import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 
 /**
  * The hook that turns the host's own process observer registration into the bridge.
  *
- * There is no counterpart to the host's call on this side of the wall and nothing to poll: the
- * registration arrives as an ordinary binder call, this hook is inside the method that accepts it,
- * and the answer travels back on the very object that was passed in. The caller is checked by uid,
- * so a registration from anyone else is left alone, and nothing the module adds can be listed.
+ * The manager registers an observer of its own when it starts; the registration arrives as an
+ * ordinary binder call, this hook sits inside the method that accepts it, and the handshake travels
+ * back on the very object that was passed in. The caller is checked by uid, so a registration from
+ * any other process is left alone.
  */
 class BridgeHook : IFrameworkHook {
     override val TAG = "BridgeHook"
@@ -27,8 +28,18 @@ class BridgeHook : IFrameworkHook {
 
             val binder = observer.asBinder()
 
+            // The registration that matters is this module’s own, made by the manager when it starts.
+            // Anything else that lands here belongs to the host and is left alone: it has no handshake
+            // to answer, and treating it as one would be a lie rather than a fallback.
+            val answer = runCatching { ServiceBridge.shakeHands(binder, service) }.isSuccess
+
+            if (!answer) {
+                logW(TAG) { "A registration that is not this module\u2019s" }
+
+                return@hookAfter
+            }
+
             service.onManagerBinder(binder)
-            ServiceBridge.shakeHands(binder, service)
             logI(TAG) { "The manager is on the bridge" }
         }
 

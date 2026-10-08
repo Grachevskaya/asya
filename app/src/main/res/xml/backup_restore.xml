@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        android:key="categorySettings"
+        android:title="@string/title_settings">
+
+        <SwitchPreferenceCompat
+            android:icon="@drawable/outline_settings_24"
+            android:key="includeSettings"
+            app:singleLineTitle="false"
+            android:title="@string/title_settings" />
+
+        <SwitchPreferenceCompat
+            android:icon="@drawable/outline_cleaning_services_24"
+            android:key="trimConfig"
+            app:singleLineTitle="false"
+            android:title="@string/settings_clear_uninstalled_app_configs" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="categoryContent"
+        android:title="@string/backup_restore_apps">
+
+        <Preference
+            android:icon="@drawable/outline_android_24"
+            android:key="manageApps"
+            app:singleLineTitle="false"
+            android:title="@string/backup_restore_apps" />
+
+        <Preference
+            android:icon="@drawable/ic_outline_layers_24"
+            android:key="manageTemplates"
+            app:singleLineTitle="false"
+            android:title="@string/backup_restore_templates" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="categoryOverwrite"
+        android:title="@string/settings_overwrite">
+
+        <SwitchPreferenceCompat
+            android:key="overwriteApps"
+            app:singleLineTitle="false"
+            android:title="@string/settings_overwrite" />
+
+        <SwitchPreferenceCompat
+            android:key="overwriteTemplates"
+            app:singleLineTitle="false"
+            android:title="@string/settings_overwrite" />
+    </PreferenceCategory>
+</PreferenceScreen>

@@ -7,7 +7,6 @@ import androidx.core.view.isVisible
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.ShapeAppearanceModel
-import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 
 /*
  * The corners a row card wears inside a group, and the space that separates it from its
@@ -15,7 +14,6 @@ import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
  * are told apart by a hair of space rather than by a rule. The home screen and the about screen
  * both call this -- which is the whole point, the two pages cannot drift apart.
  */
-private const val ROW_GAP_DP = 3
 
 /**
  * Every card of this group, in the order it is laid out: the walk goes into the containers that
@@ -44,35 +42,28 @@ fun ViewGroup.rowCards(): List<MaterialCardView> {
 fun ViewGroup.styleSegmentedCards(context: Context) = rowCards().styleSegmentedCards(context)
 
 fun List<MaterialCardView>.styleSegmentedCards(context: Context) {
-    val largeRadius =
-        context.cornerSize(
-            com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge,
-            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge,
-            28,
-        )
-    val smallRadius =
-        context.cornerSize(
-            com.google.android.material.R.attr.shapeAppearanceCornerExtraSmall,
-            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraSmall,
-            4,
-        )
-    val gap = (ROW_GAP_DP * context.resources.displayMetrics.density).toInt()
+    val gap = context.groupedRowGap()
 
     forEachIndexed { index, card ->
-        val first = index == 0
-        val last = index == lastIndex
+        // Where this card sits decides its corners, by the same rule every other group of rows uses.
+        val (top, bottom) = context.groupedRowRadii(groupedRowGroup(index, size), RowCorners.Cards)
         card.shapeAppearanceModel =
             ShapeAppearanceModel
                 .builder()
-                .setTopLeftCorner(CornerFamily.ROUNDED, if (first) largeRadius else smallRadius)
-                .setTopRightCorner(CornerFamily.ROUNDED, if (first) largeRadius else smallRadius)
-                .setBottomLeftCorner(CornerFamily.ROUNDED, if (last) largeRadius else smallRadius)
-                .setBottomRightCorner(CornerFamily.ROUNDED, if (last) largeRadius else smallRadius)
+                .setTopLeftCorner(CornerFamily.ROUNDED, top)
+                .setTopRightCorner(CornerFamily.ROUNDED, top)
+                .setBottomLeftCorner(CornerFamily.ROUNDED, bottom)
+                .setBottomRightCorner(CornerFamily.ROUNDED, bottom)
                 .build()
 
+        // The press is the one a settings row wears: a ripple masked to the shape this card has in
+        // its group, drawn over the surface rather than replacing it.
+        card.foreground =
+            context.groupedRowRipple(groupedRowGroup(index, size), RowCorners.Cards)
+
         (card.layoutParams as? ViewGroup.MarginLayoutParams)?.apply {
-            topMargin = if (first) 0 else gap
-            bottomMargin = if (last) 0 else gap
+            topMargin = if (index == 0) 0 else gap
+            bottomMargin = if (index == lastIndex) 0 else gap
         }
     }
 }

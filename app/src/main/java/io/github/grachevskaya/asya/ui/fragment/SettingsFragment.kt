@@ -48,14 +48,14 @@ class SettingsFragment :
         view: View,
         savedInstanceState: Bundle?,
     ) {
-        with(binding.toolbar) {
+        with(binding.pageBar.toolbar) {
             setupToolbar(
                 toolbar = this,
                 title = getString(R.string.title_settings),
             )
             title = null
         }
-        binding.collapsing.title = getString(R.string.title_settings)
+        binding.pageBar.collapsing.title = getString(R.string.title_settings)
 
         if (childFragmentManager.findFragmentById(R.id.settings_container) == null) {
             childFragmentManager
@@ -403,14 +403,14 @@ class SettingsFragment :
 
             findPreference<Preference>("backupConfig")?.apply {
                 setOnPreferenceClickListener {
-                    navigate(R.id.nav_backup_restore, BackupRestoreFragmentArgs(true).toBundle())
+                    navigate(R.id.nav_backup)
                     true
                 }
             }
 
             findPreference<Preference>("restoreConfig")?.apply {
                 setOnPreferenceClickListener {
-                    navigate(R.id.nav_backup_restore, BackupRestoreFragmentArgs(false).toBundle())
+                    navigate(R.id.nav_restore)
                     true
                 }
             }

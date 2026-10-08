@@ -1,88 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
+    android:background="?attr/colorSurfaceContainer"
     tools:context=".ui.fragment.BackupRestoreFragment">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:background="@android:color/transparent"
-        android:id="@+id/app_bar"
+    <include
+        android:id="@+id/page_bar"
+        layout="@layout/view_page_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content" />
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?actionBarSize"
-            android:elevation="0dp" />
-</com.google.android.material.appbar.AppBarLayout>
-
-    <LinearLayout
-        android:id="@+id/main_layout"
+    <FrameLayout
+        android:id="@+id/preference_list"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
-
-        <Switch
-            android:id="@+id/switch_settings"
-            android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
-            android:layout_marginVertical="@dimen/item_padding_mini2x"
-            android:layout_marginHorizontal="@dimen/item_padding_horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/title_settings"
-            android:background="@null"
-            tools:ignore="UseSwitchCompatOrMaterialXml" />
-
-        <Switch
-            android:id="@+id/switch_trim_config"
-            android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
-            android:layout_marginVertical="@dimen/item_padding_mini2x"
-            android:layout_marginHorizontal="@dimen/item_padding_horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_clear_uninstalled_app_configs"
-            android:background="@null"
-            tools:ignore="UseSwitchCompatOrMaterialXml" />
-
-        <io.github.grachevskaya.asya.ui.view.ListItemView
-            android:id="@+id/manage_apps"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:buttonText="@string/edit_list"
-            app:icon="@drawable/outline_android_24" />
-
-        <Switch
-            android:id="@+id/switch_overwrite_apps"
-            android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
-            android:layout_marginHorizontal="@dimen/item_padding_horizontal"
-            android:paddingStart="@dimen/app_icon_size"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_overwrite"
-            android:background="@null"
-            tools:ignore="UseSwitchCompatOrMaterialXml" />
-
-        <io.github.grachevskaya.asya.ui.view.ListItemView
-            android:id="@+id/template_list"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:buttonText="@string/edit_list"
-            app:icon="@drawable/ic_outline_layers_24" />
-
-        <Switch
-            android:id="@+id/switch_overwrite_templates"
-            android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
-            android:layout_marginHorizontal="@dimen/item_padding_horizontal"
-            android:paddingStart="@dimen/app_icon_size"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_overwrite"
-            android:background="@null"
-            tools:ignore="UseSwitchCompatOrMaterialXml" />
-
-</LinearLayout>
-</LinearLayout>
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -137,8 +137,12 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
     ) {
         registerOnBackCallback { onBack(false) }
 
+        binding.pageBar.collapsing.title = getString(R.string.title_template_manage)
+
+        binding.pageBar.collapsing.title = getString(R.string.title_template_settings)
+
         setupToolbar(
-            toolbar = binding.toolbar,
+            toolbar = binding.pageBar.toolbar,
             title = getString(R.string.title_template_settings),
             navigationIcon = R.drawable.baseline_arrow_back_24,
             navigationOnClick = { onBack(false) },

@@ -88,15 +88,14 @@
 </fragment>
 
     <fragment
-        android:id="@+id/nav_backup_restore"
-        android:name="io.github.grachevskaya.asya.ui.fragment.BackupRestoreFragment">
+        android:id="@+id/nav_backup"
+        android:name="io.github.grachevskaya.asya.ui.fragment.BackupFragment"
+        android:label="@string/home_backup_config" />
 
-        <argument
-            android:name="isBackupMode"
-            app:argType="boolean" />
-
-</fragment>
-
+    <fragment
+        android:id="@+id/nav_restore"
+        android:name="io.github.grachevskaya.asya.ui.fragment.RestoreFragment"
+        android:label="@string/home_restore_config" />
     <fragment
         android:id="@+id/nav_template_manage"
         android:name="io.github.grachevskaya.asya.ui.fragment.TemplateManageFragment"

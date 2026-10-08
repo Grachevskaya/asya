@@ -205,6 +205,10 @@ class MainActivity
         override fun onCreate(savedInstanceState: Bundle?) {
             hosted?.let { setTheme(it.appThemeStyle()) }
 
+            // The bridge does not wait for the host to register anything: the manager asks for it.
+            io.github.grachevskaya.asya.common.ServiceBridge
+                .registerManagerObserver()
+
             setTaskDescription(
                 android.app.ActivityManager.TaskDescription(
                     getString(R.string.app_name),

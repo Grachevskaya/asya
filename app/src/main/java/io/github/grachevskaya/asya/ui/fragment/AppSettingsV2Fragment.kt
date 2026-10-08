@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.isVisible
@@ -144,14 +145,14 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
         registerOnBackCallback { onBack() }
 
         setupToolbar(
-            toolbar = binding.toolbar,
+            toolbar = binding.pageBar.toolbar,
             title = getString(R.string.title_app_settings),
             subtitle = subtitle,
             navigationIcon = R.drawable.baseline_arrow_back_24,
             navigationOnClick = { onBack() },
         )
-        binding.collapsing.title = getString(R.string.title_app_settings)
-        binding.toolbar.title = null
+        binding.pageBar.collapsing.title = getString(R.string.title_app_settings)
+        binding.pageBar.toolbar.title = null
 
         if (childFragmentManager.findFragmentById(R.id.settings_container) == null) {
             childFragmentManager
@@ -415,9 +416,14 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
                     val list = container.findViewById<LinearLayout>(R.id.choice_list)
                     val boxes =
                         templates.map { name ->
-                            val row = layoutInflater.inflate(R.layout.dialog_choice_row, list, false)
+                            val row = layoutInflater.inflate(R.layout.row_choice, list, false)
                             val label = row.findViewById<TextView>(R.id.row_text)
-                            val box = row.findViewById<MaterialCheckBox>(R.id.row_check)
+                            val box =
+                                MaterialCheckBox(row.context).apply {
+                                    isClickable = false
+                                    isFocusable = false
+                                }
+                            row.findViewById<FrameLayout>(R.id.row_control).addView(box)
 
                             label.text = name
                             box.isChecked = pack.config.applyTemplates.contains(name)

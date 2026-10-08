@@ -8,6 +8,7 @@
     <string name="title_app_manage">应用管理</string>
     <string name="title_app_select">选择应用</string>
     <string name="title_app_settings">应用设置</string>
+    <string name="settings_more">更多</string>
     <string name="title_about">关于</string>
     <string name="show_crash_log">显示崩溃日志</string>
     <string name="edit_list">编辑列表</string>
@@ -54,8 +55,17 @@
     <string name="home_exported">备份完成</string>
     <!-- Backup & Restore -->
     <string name="backup_restore_apps">应用配置</string>
+    <string name="backup_content">备份内容</string>
+    <string name="backup_include_settings">包含设置</string>
+    <string name="backup_include_settings_summary">把模块的设置一并写进备份</string>
+    <string name="backup_restore_content">恢复内容</string>
     <string name="backup_restore_templates">应用模板</string>
     <string name="backup_restore_append">增量还原</string>
+    <string name="restore_mode">恢复方式</string>
+    <string name="restore_choose_apps">选择要恢复的应用</string>
+    <string name="restore_choose_templates">选择要恢复的模板</string>
+    <string name="restore_mode_overwrite_summary">用备份里的项替换已有的项</string>
+    <string name="restore_mode_append_summary">保留已有的项，只补上没有的</string>
     <string name="backup_restore_items_count">%d 项</string>
     <!-- App select -->
     <string name="list_show_system">显示系统应用</string>
@@ -119,6 +129,8 @@
     <!-- Settings -->
     <string name="settings_module">模块</string>
     <string name="settings_overwrite">覆盖</string>
+    <string name="backup_restore_overwrite_summary">覆盖目标端已有的配置</string>
+    <string name="backup_restore_how">恢复方式</string>
     <string name="settings_overwritten">已覆盖</string>
     <string name="settings_overwrite_summary">打开开关后，对应功能将被强制启用，否则将使用默认值</string>
     <string name="settings_default_value">默认值：%s</string>

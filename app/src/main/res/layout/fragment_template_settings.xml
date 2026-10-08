@@ -7,18 +7,11 @@
     android:background="?attr/colorSurfaceContainer"
     tools:context="io.github.grachevskaya.asya.ui.fragment.TemplateSettingsFragment">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:background="@android:color/transparent"
-        android:id="@+id/app_bar"
+    <include
+        android:id="@+id/page_bar"
+        layout="@layout/view_page_bar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?actionBarSize"
-            android:elevation="0dp" />
-    </com.google.android.material.appbar.AppBarLayout>
+        android:layout_height="wrap_content" />
 
     <LinearLayout
         android:id="@+id/template_content"
