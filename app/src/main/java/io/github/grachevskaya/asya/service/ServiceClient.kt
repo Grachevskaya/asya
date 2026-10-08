@@ -72,52 +72,31 @@ object ServiceClient {
      * is the same file the manager reads for everything else -- the kernel's own numbers, shown where
      * a user can see them instead of only on the module's description line.
      */
+
+    /**
+     * What the kernel half reported about itself, or nothing when it has not reported yet.
+     *
+     * The service asks the kernel and holds the answer; the bridge hands it over. Nothing is
+     * written for the manager to read, and a process the service is not in has no answer.
+     */
     val kernelStatus: Map<String, String> get() =
         try {
-        /*
-         * In-process first: when the manager runs inside the host, the service object is right
-         * here and its answer is live. Only fall back to the file when it is not (a fresh boot
-         * before the service starts, or a build where the two are not in one process).
-         */
             io.github.grachevskaya.asya.common.ServiceBridge.host
-                ?.kernelStatus()
-                ?.let { return it }
-
-            val text = serviceDir()?.let { File(it, "kernel.json") }?.takeIf { it.isFile }?.readText() ?: ""
-
-            if (text.isEmpty()) {
-                emptyMap()
-            } else {
-                // A flat table of strings, written by this module's own encoder: a pattern is enough, and
-                // it keeps the app from growing a dependency for one file it already knows the shape of.
-                Regex("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"")
-                    .findAll(text)
-                    .associate { it.groupValues[1] to it.groupValues[2] }
-            }
+                ?.kernelStatus() ?: emptyMap()
         } catch (cause: Throwable) {
             Log.e(TAG, "Could not read the kernel status", cause)
             emptyMap()
         }
 
-    private fun status(): String =
-        try {
-            serviceDir()?.let { File(it, "status.json") }?.takeIf { it.isFile }?.readText() ?: ""
-        } catch (_: Throwable) {
-            ""
-        }
-
-    private fun statusValue(name: String): Int {
-        val text = status()
-        if (text.isEmpty()) {
-            Log.i(TAG, "No status text for $name: the directory or the file could not be read")
-        }
-
-        return Regex("\"$name\"\\s*:\\s*(-?\\d+)")
-            .find(text)
-            ?.groupValues
-            ?.get(1)
+    /*
+     * The status lives in the service, not in a file: the bridge answers with what it holds. A
+     * process the service is not in has no status, which is what the caller had before the file.
+     */
+    private fun statusValue(name: String): Int =
+        io.github.grachevskaya.asya.common.ServiceBridge.host
+            ?.moduleStatus()
+            ?.get(name)
             ?.toIntOrNull() ?: 0
-    }
 
     var config: String
         get() =

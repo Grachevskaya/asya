@@ -113,7 +113,7 @@ public final class HostFiles {
      * This runs inside the host process, and the host's own data directory belongs to the host, so
      * making a directory here needs no permission that is not already held. The service cannot do it:
      * creating inside an application's data directory is not something system_server is allowed to
-     * do, and the service failing at it is what kept the manager from ever seeing a status.
+     * do, which is why this side makes it.
      */
     public static void prepareStateDirectory() {
         try {
@@ -128,9 +128,6 @@ public final class HostFiles {
                 HostLog.e("The state directory could not be made: %s", state);
                 return;
             }
-
-            File status = new File(state, "status.json");
-            if (!status.isFile()) status.createNewFile();
 
             HostLog.i("The state directory is %s", state);
         } catch (Throwable cause) {

@@ -10,9 +10,9 @@ import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.PACKAGE_MANAGER_S
 /**
  * The install and removal transactions, and the rebuild that follows each of them.
  *
- * Both are hooked under every name the framework has used: the entry may be a forwarder, and a
- * forwarder is small enough to be inlined away. The frame's index 0 is the receiver, not the first
- * parameter, so the install request list is index 1.
+ * Each transaction is hooked once, on the method that carries it out, and the rebuild follows the
+ * one that committed. The frame's index 0 is the receiver, not the first parameter, so the install
+ * request list is index 1.
  */
 class PackageTransactionHook : IFrameworkHook {
     override val TAG = "PackageTransactionHook"
@@ -20,14 +20,31 @@ class PackageTransactionHook : IFrameworkHook {
     override fun load() {
         logI(TAG) { "Load hook" }
 
-        hookInstall(PACKAGE_MANAGER_SERVICE_CLASS, "installPackagesTraced")
-        hookInstall(INSTALL_PACKAGE_HELPER_CLASS, "installPackagesTraced")
-        hookInstall(INSTALL_PACKAGE_HELPER_CLASS, "installPackagesLI")
-        hookInstall(INSTALL_PACKAGE_HELPER_CLASS, "installPackagesTracedLI")
-        hookInstall(PACKAGE_MANAGER_SERVICE_CLASS, "installPackagesTracedLI")
+        hookFirstAvailableInstall(
+            INSTALL_PACKAGE_HELPER_CLASS to "installPackagesLI",
+            INSTALL_PACKAGE_HELPER_CLASS to "installPackagesTracedLI",
+            INSTALL_PACKAGE_HELPER_CLASS to "installPackagesTraced",
+            PACKAGE_MANAGER_SERVICE_CLASS to "installPackagesTracedLI",
+            PACKAGE_MANAGER_SERVICE_CLASS to "installPackagesTraced",
+        )
 
         hookRemove(DELETE_PACKAGE_HELPER_CLASS, "deletePackageX")
-        hookRemove(PACKAGE_MANAGER_SERVICE_CLASS, "deletePackageX")
+    }
+
+    /**
+     * The framework moved the implementation down over the versions: InstallPackageHelper holds it
+     * and the names on PackageManagerService forward to it, so the deepest name that exists is taken
+     * and the others are left alone. Hooking a forwarder together with its target rebuilds the table
+     * twice for one install.
+     */
+    private fun hookFirstAvailableInstall(vararg candidates: Pair<String, String>) {
+        for ((className, methodName) in candidates) {
+            if (!hooker.isHookAvailable(className, methodName)) continue
+            hookInstall(className, methodName)
+            return
+        }
+
+        logW(TAG) { "No install method on this build" }
     }
 
     private fun hookInstall(

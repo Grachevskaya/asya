@@ -1,16 +1,30 @@
 package io.github.grachevskaya.asya.zygote.service
 
 import io.github.grachevskaya.asya.common.FilterHolder
+import java.util.concurrent.ConcurrentHashMap
 
+/*
+ * What the hooks remember between calls.
+ *
+ * The map is read on every package query -- it is the path a query takes when a target asks whether
+ * another package exists -- so a lookup is one hash and the queries answered for a uid are hashed as
+ * well: a list would be walked for each of them. Both structures are concurrent, because the query
+ * that fills an entry and the query that reads it are not the same thread.
+ */
 class AsyaServiceDataHolder {
-    private val filterCountLock = Any()
+    private class Hidden(
+        val caller: String,
+    ) {
+        val queries: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    }
 
-    private val uidHideCache = mutableListOf<Triple<Int, String, MutableList<String>>>()
+    private val filterCountLock = Any()
+    private val uidHideCache = ConcurrentHashMap<Int, Hidden>()
 
     var filterHolder = FilterHolder()
         internal set
 
-    fun findCallerByUid(uid: Int) = uidHideCache.firstOrNull { it.first == uid }?.second
+    fun findCallerByUid(uid: Int) = uidHideCache[uid]?.caller
 
     fun shouldHideFromUid(
         uid: Int,
@@ -18,7 +32,7 @@ class AsyaServiceDataHolder {
     ): Boolean? {
         if (query == null) return null
 
-        return uidHideCache.firstOrNull { it.first == uid && it.third.contains(query) } != null
+        return uidHideCache[uid]?.queries?.contains(query) == true
     }
 
     fun putShouldHideUidCache(
@@ -26,12 +40,7 @@ class AsyaServiceDataHolder {
         caller: String,
         query: String,
     ) {
-        val findList = uidHideCache.firstOrNull { it.first == uid }
-        if (findList != null) {
-            findList.third.add(query)
-        } else {
-            uidHideCache.add(Triple(uid, caller, mutableListOf(query)))
-        }
+        uidHideCache.getOrPut(uid) { Hidden(caller) }.queries.add(query)
     }
 
     fun clearUidCache() = uidHideCache.clear()
@@ -58,11 +67,8 @@ class AsyaServiceDataHolder {
         if (caller == null || amount < 1) return
 
         synchronized(filterCountLock) {
-            if (!filterHolder.filterCounts.containsKey(caller)) {
-                filterHolder.filterCounts[caller] = FilterHolder.FilterCount()
-            }
+            val filterCount = filterHolder.filterCounts.getOrPut(caller) { FilterHolder.FilterCount() }
 
-            val filterCount = filterHolder.filterCounts[caller]!!
             when (filterType) {
                 FilterHolder.FilterType.PACKAGE_MANAGER -> filterCount.packageManagerCount += amount
                 FilterHolder.FilterType.ACTIVITY_LAUNCH -> filterCount.activityLaunchCount += amount

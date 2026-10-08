@@ -29,6 +29,7 @@ object ServiceBridge {
     /** This module owns both objects, and the range with them: well clear of any AIDL's own codes. */
     private const val CODE_HELLO = 0x00A50001
     private const val CODE_PACKAGES_CHANGED = 0x00A50002
+    private const val CODE_MODULE_STATUS = 0x00A50010
     private const val CODE_KERNEL_STATUS = 0x00A50011
     private const val CODE_CONFIG_JSON = 0x00A50012
     private const val CODE_FILTER_COUNT = 0x00A50013
@@ -36,6 +37,8 @@ object ServiceBridge {
 
     /** What the service can answer while it is running. */
     interface Host {
+        fun moduleStatus(): Map<String, String>
+
         fun kernelStatus(): Map<String, String>
 
         fun configJson(): String?
@@ -73,6 +76,13 @@ object ServiceBridge {
             if (reply == null) return super.onTransact(code, data, reply, flags)
 
             when (code) {
+                CODE_MODULE_STATUS ->
+                    reply.writeBundle(
+                        Bundle().apply {
+                            service.moduleStatus().forEach { (key, value) -> putString(key, value) }
+                        },
+                    )
+
                 CODE_KERNEL_STATUS ->
                     reply.writeBundle(
                         Bundle().apply {
@@ -151,8 +161,12 @@ object ServiceBridge {
     ) : Host {
         override val isAlive: Boolean get() = runCatching { binder.isBinderAlive }.getOrDefault(false)
 
-        override fun kernelStatus(): Map<String, String> {
-            val bundle = call(CODE_KERNEL_STATUS) ?: return emptyMap()
+        override fun moduleStatus(): Map<String, String> = strings(CODE_MODULE_STATUS)
+
+        override fun kernelStatus(): Map<String, String> = strings(CODE_KERNEL_STATUS)
+
+        private fun strings(code: Int): Map<String, String> {
+            val bundle = call(code) ?: return emptyMap()
             val values = HashMap<String, String>()
 
             bundle.keySet().forEach { key ->
