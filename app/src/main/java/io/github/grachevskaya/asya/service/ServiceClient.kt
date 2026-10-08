@@ -107,6 +107,12 @@ object ServiceClient {
                 "{}"
             }
         set(text) {
+            // The service applies it and writes it: the disk copy follows the push, and without a
+            // bridge (a process the service is not in yet) the file is written where it belongs.
+            io.github.grachevskaya.asya.common.ServiceBridge.host?.let { bridge ->
+                if (bridge.setConfig(text)) return
+            }
+
             try {
                 val file =
                     configFile() ?: run {

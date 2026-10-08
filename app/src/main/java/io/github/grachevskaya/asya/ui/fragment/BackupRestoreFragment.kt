@@ -51,6 +51,9 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
 
     private val markedForBackup = BRCategory.entries.associateWith { mutableSetOf<String>() }
 
+    /** The marks of one category: every category has a set, so the map never answers null. */
+    private fun marked(category: BRCategory): MutableSet<String> = markedForBackup.getValue(category)
+
     private val backupSAFLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) backup@{ uri ->
             if (uri == null) return@backup
@@ -86,9 +89,10 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
             try {
                 val backupContent =
                     contentResolver
-                        .openInputStream(uri)!!
-                        .reader()
-                        .use { it.readText() }
+                        .openInputStream(uri)
+                        ?.reader()
+                        ?.use { it.readText() }
+                        ?: error("The backup file could not be opened")
                 importedConfig = JsonConfig.parse(backupContent)
                 loadScreenContents()
             } catch (cause: Throwable) {
@@ -136,20 +140,20 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
         binding.manageApps.subText =
             getString(
                 R.string.backup_restore_items_count,
-                markedForBackup[BRCategory.APP]!!.size,
+                marked(BRCategory.APP).size,
             )
         binding.templateList.subText =
             getString(
                 R.string.backup_restore_items_count,
-                markedForBackup[BRCategory.TEMPLATE]!!.size,
+                marked(BRCategory.TEMPLATE).size,
             )
     }
 
     private fun loadScreenContents() {
         binding.mainLayout.isVisible = true
 
-        markedForBackup[BRCategory.APP]!!.addAll(importedConfig.scope.keys)
-        markedForBackup[BRCategory.TEMPLATE]!!.addAll(importedConfig.templates.keys)
+        marked(BRCategory.APP).addAll(importedConfig.scope.keys)
+        marked(BRCategory.TEMPLATE).addAll(importedConfig.templates.keys)
 
         with(binding.manageApps) {
             text = getString(R.string.backup_restore_apps)
@@ -219,7 +223,7 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
         val checked =
             items
                 .map {
-                    markedForBackup[category]!!.contains(it)
+                    marked(category).contains(it)
                 }.toBooleanArray()
 
         val title =
@@ -234,9 +238,9 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
                 .setTitle(title)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(android.R.string.ok) { _, _ ->
-                    val category = markedForBackup[category]
-                    category!!.clear()
-                    category.addAll(
+                    val marks = marked(category)
+                    marks.clear()
+                    marks.addAll(
                         items.mapIndexedNotNull { i, name ->
                             if (checked[i]) name else null
                         },
@@ -299,11 +303,11 @@ class BackupRestoreFragment : Fragment(R.layout.fragment_backup_restore) {
 
     private fun clearNotImportedItems(onFinish: () -> Unit) {
         importedConfig.scope.removeIf { pkg, _ ->
-            !markedForBackup[BRCategory.APP]!!.contains(pkg)
+            !marked(BRCategory.APP).contains(pkg)
         }
 
         importedConfig.templates.removeIf { template, _ ->
-            !markedForBackup[BRCategory.TEMPLATE]!!.contains(template)
+            !marked(BRCategory.TEMPLATE).contains(template)
         }
 
         if (isBackupMode) {

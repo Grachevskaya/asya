@@ -13,6 +13,9 @@ android {
 
     defaultConfig {
         buildConfigField("String[]", "SUPPORTED_LOCALES", generateSupportedLocales())
+
+        // The bridge payload tests are instrumented: they need a Parcel and shared memory.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -84,6 +87,12 @@ fun generateSupportedLocales(): String {
 
 dependencies {
     implementation(projects.common)
+
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+
+    // The bridge is written against hidden framework types: the test needs their shapes to compile.
+    androidTestCompileOnly(projects.stub)
 
     implementation(libs.androidx.navigation.fragment.ktx)
 

@@ -2,16 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Kept for whatever the manager may fetch again: nothing in this tree uses the network. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
     <!-- This permission is used for make the package list changed listener work -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
-
-    <!-- This permission is used for uninstalling the conflicted packages -->
-    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <application
         android:name="io.github.grachevskaya.asya.MyApp"

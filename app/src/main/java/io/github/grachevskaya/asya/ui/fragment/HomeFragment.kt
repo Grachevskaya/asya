@@ -286,9 +286,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             rowService.itemIcon.themedTint(android.R.attr.colorPrimary)
             rowService.itemSubtitle.text =
                 if (isWorking) {
-                    getString(R.string.home_xposed_service_on, serviceVersion)
+                    getString(R.string.home_service_on, serviceVersion)
                 } else {
-                    getString(R.string.home_xposed_service_off)
+                    getString(R.string.home_service_off)
                 }
 
             rowFilters.itemTitle.text = getString(R.string.home_row_filters)

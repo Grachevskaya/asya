@@ -23,25 +23,35 @@ object CollectionUtils {
 
     inline fun <reified T> Array<*>.lastOrNullWithType(): T? = this.lastOrNull { it is T } as? T
 
+    /*
+     * The source is copied first: syncing a collection with itself would otherwise read it after
+     * it was cleared, and answer an empty collection.
+     */
     inline fun <reified T> MutableList<T>.sync(elements: Array<T>) {
+        val copy = elements.toList()
+
         clear()
-        addAll(elements)
+        addAll(copy)
     }
 
     inline fun <reified T> MutableList<T>.sync(elements: Iterable<T>) {
+        val copy = elements.toList()
+
         clear()
-        addAll(elements)
+        addAll(copy)
     }
 
     inline fun <reified T> MutableSet<T>.sync(elements: Iterable<T>) {
+        val copy = elements.toList()
+
         clear()
-        addAll(elements)
+        addAll(copy)
     }
 
     inline fun <reified K, reified V> MutableMap<K, V>.sync(from: Map<K, V>) {
-        clear()
-        putAll(from)
-    }
+        val copy = from.toMap()
 
-    inline fun <reified T> HashSet<T>?.contains(value: T) = this?.contains(value) ?: false
+        clear()
+        putAll(copy)
+    }
 }

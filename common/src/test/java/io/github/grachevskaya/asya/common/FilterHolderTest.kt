@@ -16,4 +16,24 @@ class FilterHolderTest {
         assertTrue(holder.filterCounts.isEmpty())
         assertEquals(0, holder.totalCount)
     }
+
+    @Test
+    fun theHolderSumsWhatEveryAppWasFilteredBy() {
+        val holder = FilterHolder()
+
+        holder.filterCounts["com.example.a"] = FilterHolder.FilterCount(packageManagerCount = 1, activityLaunchCount = 0)
+        holder.filterCounts["com.example.b"] = FilterHolder.FilterCount(packageManagerCount = 0, activityLaunchCount = 4)
+
+        assertEquals(5, holder.totalCount)
+    }
+
+    @Test
+    fun theCountsSurviveTheRoundTripTheyAreWrittenAs() {
+        val holder = FilterHolder()
+
+        holder.filterCounts["com.example.a"] = FilterHolder.FilterCount(packageManagerCount = 7, activityLaunchCount = 1)
+        holder.filterCounts["com.example.b"] = FilterHolder.FilterCount()
+
+        assertEquals(holder, FilterHolder.parse(holder.toString()))
+    }
 }

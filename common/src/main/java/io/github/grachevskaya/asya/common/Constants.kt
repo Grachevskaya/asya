@@ -12,6 +12,9 @@ object Constants {
 
     const val UID_SYSTEM = 1000
 
+    /** The version a config carries when it was written without any settings. */
+    const val CONFIG_VERSION_NO_SETTINGS = -100
+
     val gmsPackages = arrayOf(GMS_PACKAGE_NAME, GSF_PACKAGE_NAME)
     val riskyPackages = arrayOf(VENDING_PACKAGE_NAME) + gmsPackages
 
@@ -20,8 +23,6 @@ object Constants {
     const val MANAGER_WORK_MODE_NO_HOOKS = 2
     const val MANAGER_WORK_MODE_LOADING = 3
     const val MANAGER_WORK_MODE_CRASHED = 4
-
-    const val CONFIG_VERSION_NO_SETTINGS = -100
 
     val packagesShouldNotHide =
         setOf(

@@ -73,6 +73,50 @@ class JsonConfigTest {
     }
 
     @Test
+    fun anUnknownKeyInsideANestedObjectIsIgnoredLikeATopLevelOne() {
+        // The tolerance is the encoder's, so it covers every level: a field a newer manager writes
+        // into a scope entry, a template or a hook item must not make the whole config unreadable.
+        val read =
+            JsonConfig.parse(
+                """{"configVersion":5,"scope":{"com.example.a":{"useWhitelist":true,"aFieldFromTheFuture":7}},""" +
+                    """ "templates":{"t":{"isWhitelist":false,"appList":["com.example.b"],"alsoNew":1}},""" +
+                    """ "disabledHooks":[{"className":"c","methodName":"m","argumentCount":2,"extra":true}]}""",
+            )
+
+        assertTrue(read.scope.getValue("com.example.a").useWhitelist)
+        assertEquals(setOf("com.example.b"), read.templates.getValue("t").appList)
+        assertEquals(2, read.disabledHooks.first().argumentCount)
+    }
+
+    @Test
+    fun aKnownKeyWithTheWrongTypeIsStillAnError() {
+        // Tolerance is for keys the schema does not know, not for values that do not fit it.
+        var threw = false
+
+        try {
+            JsonConfig.parse("""{"configVersion":"five"}""")
+        } catch (cause: Throwable) {
+            threw = true
+        }
+
+        assertTrue(threw)
+    }
+
+    @Test
+    fun aConfigThatCarriesNothingButTheVersionParses() {
+        // An old config, or a hand written one: every field but the version is absent and the
+        // defaults have to be what the service then runs with.
+        val read = JsonConfig.parse("""{"configVersion":3}""")
+
+        assertEquals(3, read.configVersion)
+        assertEquals(512, read.maxLogSize)
+        assertTrue(read.forceMountData)
+        assertTrue(read.templates.isEmpty())
+        assertTrue(read.scope.isEmpty())
+        assertTrue(read.disabledHooks.isEmpty())
+    }
+
+    @Test
     fun aConfigFromANewerManagerStillParses() {
         // ignoreUnknownKeys: a manager that knows a field the service does not must not make the
         // whole config unreadable.
@@ -83,13 +127,49 @@ class JsonConfigTest {
     }
 
     @Test
+    fun everyFieldOfAConfigSurvivesTheRoundTrip() {
+        val config =
+            JsonConfig().apply {
+                configVersion = 31
+                detailLog = true
+                errorOnlyLog = true
+                maxLogSize = 2048
+                forceMountData = false
+                disableActivityLaunchProtection = true
+                altAppDataIsolation = true
+                altVoldAppDataIsolation = true
+                skipSystemAppDataIsolation = false
+                webViewProtection = false
+                ignoreBrandProtections = true
+                disabledHooks.add(JsonConfig.HookItem("com.example.holder", "method", 1))
+                defaultConfig = JsonConfig.AppConfig(useWhitelist = true)
+                scope["com.example.a"] =
+                    JsonConfig.AppConfig(
+                        useWhitelist = true,
+                        excludeSystemApps = false,
+                        hideInstallationSource = true,
+                        hideSystemInstallationSource = true,
+                        excludeTargetInstallationSource = true,
+                        invertActivityLaunchProtection = true,
+                        excludeVoldIsolation = true,
+                        applyTemplates = mutableSetOf("held"),
+                        extraAppList = mutableSetOf("com.example.hidden"),
+                        extraOppositeAppList = mutableSetOf("com.example.shown"),
+                    )
+                templates["held"] = JsonConfig.Template(isWhitelist = false, appList = setOf("com.example.a"))
+            }
+
+        assertEquals(config, JsonConfig.parse(config.toString()))
+    }
+
+    @Test
     fun theInnerObjectsSurviveTheirOwnRoundTrip() {
         val app = JsonConfig.AppConfig(useWhitelist = true, extraOppositeAppList = mutableSetOf("com.example.x"))
         assertEquals(app, JsonConfig.AppConfig.parse(app.toString()))
 
         val template = JsonConfig.Template(isWhitelist = true, appList = setOf("com.example.a"))
-        assertTrue(template.toString().contains("\"isWhitelist\":true"))
-        assertTrue(template.toString().contains("com.example.a"))
+        val carried = JsonConfig.parse(JsonConfig().apply { templates["held"] = template }.toString())
+        assertEquals(template, carried.templates.getValue("held"))
 
         val hook = JsonConfig.HookItem("android.content.pm.PackageManager", "getInstalledPackages", 2)
         assertEquals(hook, JsonConfig.HookItem.parse(hook.toString()))

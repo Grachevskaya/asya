@@ -101,11 +101,6 @@
             android:key="resetDefault"
             android:summary="@string/settings_reset_default_summary"
             android:title="@string/settings_reset_default" />
-        <Preference
-            android:icon="@drawable/outline_cleaning_services_24"
-            android:key="forceCleanEnv"
-            android:summary="@string/settings_force_clean_env_summary"
-            android:title="@string/settings_force_clean_env" />
 </PreferenceCategory>
 
 <PreferenceCategory android:title="@string/home_backup_and_restore">

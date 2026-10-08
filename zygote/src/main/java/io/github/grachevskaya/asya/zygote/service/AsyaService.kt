@@ -30,14 +30,12 @@ import io.github.grachevskaya.asya.zygote.hook.ZygoteHook
 import io.github.grachevskaya.asya.zygote.util.ActivityManagerUtils
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getDefaultBrowser
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getWebviewProvider
-import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logE
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.Logcat.logWithLevel
 import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.isConflictingModuleInstalled
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.ensureFileIsRW
-import io.github.grachevskaya.asya.zygote.util.UserManagerUtils
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -104,6 +102,12 @@ class AsyaService(
 
     override fun configJson(): String? = runCatching { ConfigStore.configFile.takeIf { it.isFile }?.readText() }.getOrNull()
 
+    /** The manager pushed a configuration: it is applied here and written to disk for the next boot. */
+    override fun setConfig(json: String): Boolean =
+        runCatching { writeConfig(json) }
+            .onFailure { logE(TAG, it) { "Could not apply the pushed configuration" } }
+            .isSuccess
+
     companion object {
         /**
          * The directory is named with a random tail so that it is not a fixed thing to look for, and
@@ -156,8 +160,6 @@ class AsyaService(
         if (!File(ConfigStore.dataDir).isDirectory) {
             waitForHostDirectory()
         }
-
-        runCatching { pollKernelStatus() }.onFailure { logD(TAG) { "No kernel status poll: ${it.message}" } }
 
         if (StatusReporter.managerWorkMode != Constants.MANAGER_WORK_MODE_NO_HOOKS) {
             installHooks()
@@ -242,7 +244,7 @@ class AsyaService(
      * whatever configuration is there.
      */
     private fun waitForHostDirectory() {
-        thread(isDaemon = true) {
+        thread(isDaemon = true, name = "asya-service-init") {
             repeat(150) {
                 Thread.sleep(2_000)
 
@@ -255,7 +257,6 @@ class AsyaService(
                 runCatching { loadConfig() }
                 runCatching { watchConfigFile() }
                 runCatching { saveModuleStatus() }
-                runCatching { saveKernelStatus() }
 
                 logI(TAG) { "The host's directory appeared: $ConfigStore.dataDir" }
                 return@thread
@@ -555,10 +556,6 @@ class AsyaService(
         logI(TAG) { "State flushed for shutdown: " + dataHolder.filterHolder.totalCount + " filtered" }
     }
 
-    fun getServiceVersion() = BuildConfig.SERVICE_VERSION
-
-    fun getFilterCount() = dataHolder.filterHolder.totalCount
-
     fun clearLogs() {
         if (!ensureManagerWorkModeOK()) return
 
@@ -634,8 +631,6 @@ class AsyaService(
         pms.getPackageInfoCompat(packageName, 0L, userId)
     }
 
-    fun getLogFileLocation(): String = ModuleLogger.logFile.absolutePath
-
     fun getDetailedFilterStats() = dataHolder.filterHolder.toString()
 
     fun clearFilterStats() {
@@ -645,8 +640,6 @@ class AsyaService(
 
         writeFilterCount(true)
     }
-
-    fun getServiceVersionName() = BuildConfig.APP_VERSION_NAME
 
     fun reloadConfigFromFile() {
         invalidatePackageCaches()
@@ -663,6 +656,4 @@ class AsyaService(
 
         config = loading
     }
-
-    fun getUserProfiles() = binderLocalScope { UserManagerUtils.userIds }
 }

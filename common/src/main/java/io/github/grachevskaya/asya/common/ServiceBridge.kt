@@ -27,23 +27,68 @@ import android.os.Parcel
  */
 object ServiceBridge {
     /** This module owns both objects, and the range with them: well clear of any AIDL's own codes. */
-    private const val CODE_HELLO = 0x00A50001
-    private const val CODE_PACKAGES_CHANGED = 0x00A50002
-    private const val CODE_MODULE_STATUS = 0x00A50010
-    private const val CODE_KERNEL_STATUS = 0x00A50011
-    private const val CODE_CONFIG_JSON = 0x00A50012
-    private const val CODE_FILTER_COUNT = 0x00A50013
-    private const val CODE_FILTER_STATS = 0x00A50014
+    internal const val CODE_HELLO = 0x00A50001
+    internal const val CODE_PACKAGES_CHANGED = 0x00A50002
+    internal const val CODE_MODULE_STATUS = 0x00A50010
+
+    /** The configuration, written by the manager: the one message that is a whole document. */
+    internal const val CODE_CONFIG_SET = 0x00A50018
+
+    /** Markers for a payload that travels in shared memory rather than in the parcel itself. */
+    internal const val PAYLOAD_BUNDLE = 0
+    internal const val PAYLOAD_SHARED_MEMORY = 1
+
+    /** Above this the parcel is left alone and the bytes go through shared memory. */
+    internal const val PARCEL_LIMIT = 64 * 1024
+
+    /**
+     * How a payload of this many bytes travels. It is a function of the size and nothing else, so
+     * the boundary the two ends have to agree on can be checked without a device.
+     */
+    internal fun payloadKind(size: Int): Int = if (size <= PARCEL_LIMIT) PAYLOAD_BUNDLE else PAYLOAD_SHARED_MEMORY
+
+    internal const val CODE_KERNEL_STATUS = 0x00A50011
+    internal const val CODE_CONFIG_JSON = 0x00A50012
+    internal const val CODE_FILTER_COUNT = 0x00A50013
+    internal const val CODE_FILTER_STATS = 0x00A50014
+
+    /** What an incoming transaction code means to the end that received it. */
+    internal const val DISPATCH_UNKNOWN = 0
+    internal const val DISPATCH_HANDLED = 1
+    internal const val DISPATCH_INTERFACE = 2
+
+    /**
+     * How the manager answers a code: its own two, the interface cases it must not forward (the
+     * framework calls the observer through this same object), or neither. The decision is a
+     * function of the code, so the set of codes and their meaning can be checked without a device.
+     */
+    internal fun managerDispatch(code: Int): Int =
+        when {
+            code == CODE_HELLO || code == CODE_PACKAGES_CHANGED -> DISPATCH_HANDLED
+            code in 1..IBinder.LAST_CALL_TRANSACTION -> DISPATCH_INTERFACE
+            else -> DISPATCH_UNKNOWN
+        }
+
+    /** The codes the service end answers, and nothing else: it is a plain binder of this module. */
+    internal fun serviceHandles(code: Int): Boolean =
+        code == CODE_MODULE_STATUS ||
+            code == CODE_KERNEL_STATUS ||
+            code == CODE_CONFIG_JSON ||
+            code == CODE_CONFIG_SET ||
+            code == CODE_FILTER_COUNT ||
+            code == CODE_FILTER_STATS
 
     /** What the service can answer while it is running. */
     interface Host {
-        fun moduleStatus(): Map<String, String>
+        fun moduleStatus(): Map<String, String>?
 
-        fun kernelStatus(): Map<String, String>
+        fun kernelStatus(): Map<String, String>?
 
         fun configJson(): String?
 
-        fun filterCount(): Int
+        fun setConfig(json: String): Boolean
+
+        fun filterCount(): Int?
 
         fun filterStatsJson(): String?
 
@@ -64,6 +109,50 @@ object ServiceBridge {
     var onServiceEvent: (() -> Unit)? = null
 
     /** The service's end, written into the handshake and called by the manager afterwards. */
+
+    /**
+     * A string that may not fit in a parcel. Small ones travel inside it; the others are put in
+     * shared memory and the parcel carries the handle, which has no size limit of its own.
+     */
+    private fun Parcel.writeLargeString(text: String) {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+
+        if (payloadKind(bytes.size) == PAYLOAD_BUNDLE) {
+            writeInt(PAYLOAD_BUNDLE)
+            writeBundle(Bundle().apply { putString("json", text) })
+
+            return
+        }
+
+        val memory = android.os.SharedMemory.create("asya-bridge", bytes.size)
+
+        memory.mapReadWrite().put(bytes)
+        writeInt(PAYLOAD_SHARED_MEMORY)
+        memory.writeToParcel(this, 0)
+        memory.close()
+    }
+
+    private fun Parcel.readLargeString(): String? =
+        runCatching {
+            when (readInt()) {
+                PAYLOAD_SHARED_MEMORY -> {
+                    val memory =
+                        android.os.SharedMemory.CREATOR
+                            .createFromParcel(this)
+                    val text = Charsets.UTF_8.decode(memory.mapReadOnly()).toString()
+
+                    memory.close()
+                    text
+                }
+
+                else -> {
+                    val bundle = readBundle(javaClass.classLoader)
+
+                    bundle?.getString("json")
+                }
+            }
+        }.getOrNull()
+
     class ServiceBinder(
         private val service: Host,
     ) : Binder() {
@@ -75,24 +164,32 @@ object ServiceBridge {
         ): Boolean {
             if (reply == null) return super.onTransact(code, data, reply, flags)
 
+            if (!serviceHandles(code)) return super.onTransact(code, data, reply, flags)
+
             when (code) {
                 CODE_MODULE_STATUS ->
                     reply.writeBundle(
                         Bundle().apply {
-                            service.moduleStatus().forEach { (key, value) -> putString(key, value) }
+                            service.moduleStatus()?.forEach { (key, value) -> putString(key, value) }
                         },
                     )
 
                 CODE_KERNEL_STATUS ->
                     reply.writeBundle(
                         Bundle().apply {
-                            service.kernelStatus().forEach { (key, value) -> putString(key, value) }
+                            service.kernelStatus()?.forEach { (key, value) -> putString(key, value) }
                         },
                     )
 
-                CODE_CONFIG_JSON -> reply.writeBundle(Bundle().apply { putString("json", service.configJson()) })
+                CODE_CONFIG_JSON -> reply.writeLargeString(service.configJson() ?: "")
 
-                CODE_FILTER_COUNT -> reply.writeBundle(Bundle().apply { putInt("count", service.filterCount()) })
+                CODE_CONFIG_SET -> {
+                    service.setConfig(data.readLargeString() ?: "")
+                    reply.writeInt(PAYLOAD_BUNDLE)
+                }
+
+                CODE_FILTER_COUNT ->
+                    reply.writeBundle(Bundle().apply { service.filterCount()?.let { putInt("count", it) } })
 
                 CODE_FILTER_STATS -> reply.writeBundle(Bundle().apply { putString("json", service.filterStatsJson()) })
 
@@ -118,6 +215,11 @@ object ServiceBridge {
             reply: Parcel?,
             flags: Int,
         ): Boolean {
+            when (managerDispatch(code)) {
+                DISPATCH_UNKNOWN -> return super.onTransact(code, data, reply, flags)
+                DISPATCH_INTERFACE -> return true
+            }
+
             when (code) {
                 CODE_HELLO -> {
                     data.readStrongBinder()?.let { host = ServiceProxy(it) }
@@ -131,8 +233,6 @@ object ServiceBridge {
                     return true
                 }
             }
-
-            if (code in 1..IBinder.LAST_CALL_TRANSACTION) return true
 
             return super.onTransact(code, data, reply, flags)
         }
@@ -161,24 +261,53 @@ object ServiceBridge {
     ) : Host {
         override val isAlive: Boolean get() = runCatching { binder.isBinderAlive }.getOrDefault(false)
 
-        override fun moduleStatus(): Map<String, String> = strings(CODE_MODULE_STATUS)
+        override fun moduleStatus(): Map<String, String>? = strings(CODE_MODULE_STATUS)
 
-        override fun kernelStatus(): Map<String, String> = strings(CODE_KERNEL_STATUS)
+        override fun kernelStatus(): Map<String, String>? = strings(CODE_KERNEL_STATUS)
 
-        private fun strings(code: Int): Map<String, String> {
-            val bundle = call(code) ?: return emptyMap()
-            val values = HashMap<String, String>()
+        /** Null when the call did not come back: an empty map is the service answering "nothing". */
+        private fun strings(code: Int): Map<String, String>? =
+            call(code)?.let { bundle ->
+                val values = HashMap<String, String>()
 
-            bundle.keySet().forEach { key ->
-                bundle.getString(key)?.let { values[key] = it }
+                bundle.keySet().forEach { key ->
+                    bundle.getString(key)?.let { values[key] = it }
+                }
+
+                values
             }
 
-            return values
-        }
+        override fun configJson(): String? = callText(CODE_CONFIG_JSON)
 
-        override fun configJson(): String? = call(CODE_CONFIG_JSON)?.getString("json")
+        override fun setConfig(json: String): Boolean =
+            runCatching {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
 
-        override fun filterCount(): Int = call(CODE_FILTER_COUNT)?.getInt("count") ?: 0
+                try {
+                    data.writeLargeString(json)
+                    binder.transact(CODE_CONFIG_SET, data, reply, 0)
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }.getOrDefault(false)
+
+        /** One transaction whose answer is a string, in the parcel or in shared memory. */
+        private fun callText(code: Int): String? =
+            runCatching {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+
+                try {
+                    if (binder.transact(code, data, reply, 0)) reply.readLargeString() else null
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }.getOrNull()
+
+        override fun filterCount(): Int? = call(CODE_FILTER_COUNT)?.getInt("count")
 
         override fun filterStatsJson(): String? = call(CODE_FILTER_STATS)?.getString("json")
 

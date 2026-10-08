@@ -20,7 +20,6 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreferenceCompat
 import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import dev.androidbroadcast.vbpd.viewBinding
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
@@ -80,7 +79,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
                 enabled = cfg != null,
                 mode = args.mode,
                 config = cfg ?: JsonConfig.AppConfig(),
-                bulkApps = args.bulkConfigApps,
                 customSubtitle = args.customSubtitle,
             )
         AppSettingsViewModel.Factory(pack)
@@ -131,15 +129,9 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
 
     val subtitle: String by lazy {
         if (viewModel.pack.mode != AppConstants.APP_CONFIG_MODE_SINGLE) {
-            if (!viewModel.pack.customSubtitle.isNullOrEmpty()) {
-                return@lazy viewModel.pack.customSubtitle!!
-            } else if (viewModel.pack.bulkApps.isNullOrEmpty()) {
-                return@lazy getString(R.string.title_bulk_config_wizard)
-            } else {
-                return@lazy viewModel.pack.bulkApps!!.joinToString(", ") {
-                    PackageHelper.loadAppLabel(it)
-                }
-            }
+            viewModel.pack.customSubtitle
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { return@lazy it }
         }
 
         return@lazy PackageHelper.loadAppLabel(viewModel.pack.app)
@@ -241,12 +233,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
 
         internal val parent get() = requireParentFragment() as AppSettingsV2Fragment
         internal val pack get() = parent.viewModel.pack
-
-        fun showForceStopWarning() {
-            if (pack.mode == AppConstants.APP_CONFIG_MODE_SINGLE) {
-                showToast(R.string.app_force_stop_warning, Snackbar.LENGTH_LONG)
-            }
-        }
     }
 
     class AppPreferenceFragment : BaseAppSettingsPreferenceFragment() {
@@ -277,10 +263,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
                 if (pack.mode != AppConstants.APP_CONFIG_MODE_SINGLE) {
                     it.icon = R.drawable.outline_storage_24.asDrawable(requireContext())
                     it.title = parent.subtitle
-                    if (!pack.bulkApps.isNullOrEmpty()) {
-                        it.isSingleLineTitle = true
-                        it.summary = getString(R.string.title_bulk_config_wizard)
-                    }
                 } else {
                     it.icon = PackageHelper.loadAppIcon(pack.app)
                     it.title = PackageHelper.loadAppLabel(pack.app)

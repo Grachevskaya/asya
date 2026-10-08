@@ -39,8 +39,6 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
             logI(TAG) { "Policy for the kernel: ${pairs.size / 2} pair(s)" }
             KernelPolicy.push(pairs)
 
-            saveKernelStatus()
-
             waitForUserUnlocked(5 * 60_000L)
 
             val apks = buildApkTable(pairs)
@@ -54,8 +52,6 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
                     " native=" + PackageModelReader.isolationCounts[ISOLATION_NATIVE],
             )
             KernelPolicy.pushApks(apks)
-
-            saveKernelStatus()
 
                 /*
                  * The kernel's ledger is as long as the module has been loaded, and this side's is as

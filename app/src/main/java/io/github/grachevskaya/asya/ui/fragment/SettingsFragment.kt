@@ -36,7 +36,6 @@ import io.github.grachevskaya.asya.ui.util.stylePreferenceRows
 import io.github.grachevskaya.asya.ui.util.withAnimations
 import io.github.grachevskaya.asya.ui.util.withDisableButton
 import io.github.grachevskaya.asya.util.ConfigUtils.getLocale
-import io.github.grachevskaya.asya.util.SuUtils
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -489,27 +488,8 @@ class SettingsFragment :
                         }.setNegativeButton(R.string.no, null)
                         .show()
                 } else {
-                    showToast(R.string.home_xposed_service_off)
+                    showToast(R.string.home_service_off)
                 }
-                true
-            }
-
-            findPreference<Preference>("forceCleanEnv")?.setOnPreferenceClickListener {
-                MaterialAlertDialogBuilder(
-                    requireActivity(),
-                    R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
-                ).setIcon(R.drawable.outline_cleaning_services_24)
-                    .setTitle(R.string.settings_force_clean_env)
-                    .setMessage(R.string.settings_is_clean_env_summary)
-                    .setPositiveButton(android.R.string.ok) { _, _ ->
-                        val result = SuUtils.execPrivileged("rm -rf /data/misc/asya*")
-                        if (result) {
-                            showToast(R.string.settings_force_clean_env_toast_successful)
-                        } else {
-                            showToast(R.string.settings_permission_denied)
-                        }
-                    }.setNegativeButton(android.R.string.cancel, null)
-                    .show()
                 true
             }
         }

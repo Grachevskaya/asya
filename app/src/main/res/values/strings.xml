@@ -33,8 +33,8 @@
     <string name="follow_system">Follow system</string>
 
     <!-- Home -->
-    <string name="home_xposed_service_on">System service running [%d]</string>
-    <string name="home_xposed_service_off">System service not running</string>
+    <string name="home_service_on">System service running [%d]</string>
+    <string name="home_service_off">System service not running</string>
     <string name="home_backup_and_restore">Backup &amp; Restore</string>
     <string name="home_figures_none">--</string>
     <string name="home_card_zygote">Zygote</string>
@@ -172,12 +172,7 @@
     <string name="settings_reset_default">Reset to defaults</string>
     <string name="settings_reset_default_summary">This option allows you to clear whole config and begin from scratch</string>
     <string name="settings_irreversible_confirmation">This action is irreversible. Are you sure?</string>
-    <string name="settings_is_clean_env_summary">Remove system service cache in /data/misc/asya_*. This means you need to launch the module app once manually after next reboot in order to enable interceptions, and interception counts will also be cleaned.</string>
-    <string name="settings_force_clean_env">Force clean runtime environment (root)</string>
-    <string name="settings_force_clean_env_summary">Only if system service fails to start, otherwise you should click the above option.</string>
-    <string name="settings_force_clean_env_toast_successful">Runtime environment cleaned</string>
 
-    <string name="title_bulk_config_wizard">Bulk config wizard</string>
 
     <!-- About -->
     <string name="about_description">

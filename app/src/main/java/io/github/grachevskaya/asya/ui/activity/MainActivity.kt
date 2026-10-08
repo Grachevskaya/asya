@@ -52,9 +52,6 @@ class MainActivity
         /** The page on screen, kept as it changes: a rebuild comes back to it. */
         private var lastDestination = 0
 
-        /** The page the bar carries that a rebuild has to come back to, if there is one. */
-        private fun rememberedStart(): Int? = lastDestination.takeIf { it != 0 && it in BOTTOM_BAR_PLACES && it != R.id.nav_home }
-
         /**
          * The host, built here and not named in the layout.
          *

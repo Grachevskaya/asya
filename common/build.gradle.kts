@@ -14,7 +14,6 @@ android {
     namespace = "$appPackageName.common"
 
     buildFeatures {
-        aidl = true
         buildConfig = true
     }
 

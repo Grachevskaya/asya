@@ -23,6 +23,7 @@ nav-safeargs-kotlin = { id = "androidx.navigation.safeargs.kotlin", version.ref 
 com-github-aerathstuff-zygoteloader = { id = "io.github.vova7878.ZygoteLoader", version.ref = "zygoteloader" }
 
 [libraries]
+androidx-test-runner = { module = "androidx.test:runner", version = "1.6.2" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-appcompat-appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.8.0" }
 androidx-annotation-jvm = { group = "androidx.annotation", name = "annotation-jvm", version = "1.11.0" }

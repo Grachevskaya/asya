@@ -1,10 +1,8 @@
 package io.github.grachevskaya.asya.zygote.service
 
 import io.github.grachevskaya.asya.common.Constants
-import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
-import kotlin.concurrent.thread
 
 /*
  * What the module tells the manager and the kernel about itself: the module status, the kernel
@@ -28,25 +26,10 @@ internal fun AsyaService.saveModuleStatus() {
  * numbers are the kernel's own, not a second opinion about them.
  */
 
-internal fun AsyaService.saveKernelStatus() {
-    runCatching { KernelPolicy.requestStatus() }
-        .onSuccess { StatusReporter.kernelStatus = it }
-        .onFailure { logD(TAG) { "Could not read the kernel status: ${it.message}" } }
-}
-
 /**
  * The kernel's numbers move as apps come and go, so they are asked for again now and then; the card
  * would otherwise show whatever was true the last time the configuration changed.
  */
-
-internal fun AsyaService.pollKernelStatus() {
-    thread(isDaemon = true) {
-        while (true) {
-            Thread.sleep(30_000)
-            runCatching { saveKernelStatus() }
-        }
-    }
-}
 
 /**
  *
@@ -59,7 +42,7 @@ internal fun AsyaService.publishStatusToKernelSu(
 ) {
     val kernelUp =
         runCatching {
-            StatusReporter.kernelStatus["state"] == "loaded"
+            KernelPolicy.requestStatus()["state"] == "loaded"
         }.getOrDefault(false)
     val serviceUp = apks > 0 || pairs > 0
     val description =
@@ -116,6 +99,4 @@ internal object StatusReporter {
 
     /** What the bridge answers, and what the kernel half last reported. */
     internal var moduleStatus: Map<String, String> = emptyMap()
-
-    internal var kernelStatus: Map<String, String> = emptyMap()
 }

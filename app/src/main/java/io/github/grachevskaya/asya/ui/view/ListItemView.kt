@@ -58,10 +58,6 @@ class ListItemView
             binding.icon.setImageResource(icon)
         }
 
-        fun showIcon(show: Boolean) {
-            binding.icon.isVisible = show
-        }
-
         override fun setOnClickListener(l: OnClickListener?) {
             if (binding.button.isVisible) {
                 binding.button.setOnClickListener(l)

@@ -27,8 +27,8 @@
     <string name="edit">编辑</string>
     <string name="follow_system">跟随系统</string>
     <!-- Home -->
-    <string name="home_xposed_service_on">系统服务运行中 [%d]</string>
-    <string name="home_xposed_service_off">系统服务未运行</string>
+    <string name="home_service_on">系统服务运行中 [%d]</string>
+    <string name="home_service_off">系统服务未运行</string>
     <string name="home_backup_and_restore">备份 &amp; 还原</string>
     <string name="home_figures_none">--</string>
     <string name="home_card_zygote">Zygote</string>
@@ -155,11 +155,6 @@
     <string name="settings_reset_default">重置所有配置</string>
     <string name="settings_reset_default_summary">恢复到初始配置，并清空所有自定义内容</string>
     <string name="settings_irreversible_confirmation">此操作无法撤销，您确定吗？</string>
-    <string name="settings_is_clean_env_summary">删除 /data/misc/asya_* 中的缓存。下次重启手机后需手动打开本应用才能开始拦截，拦截次数也会清零。</string>
-    <string name="settings_force_clean_env">强制清理运行环境（Root）</string>
-    <string name="settings_force_clean_env_summary">系统服务无法启动时可尝试使用此选项</string>
-    <string name="settings_force_clean_env_toast_successful">运行环境清理完成！</string>
-    <string name="title_bulk_config_wizard">批量配置向导</string>
     <!-- About -->
     <string name="about_description">在沃尔库塔 5，雪覆盖着街道，研究所的窗户总是关着。Asya 注意到那些无人呼唤的名字，即使城里其他人照常生活。Tosya 和她在一起，一如既往。\n\n有些人就这样不见了。没有人为此不安。\n\n窗外，一只鸟飞过。更远处，一道微弱的信号继续向宇宙传去。Asya 想起 Tosya：她说不清 Tosya 陪在自己身边已经多久了。</string>
     <string name="about_developer">开发者</string>

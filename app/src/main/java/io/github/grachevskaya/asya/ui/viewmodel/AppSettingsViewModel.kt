@@ -24,7 +24,6 @@ class AppSettingsViewModel(
         val app: String,
         var enabled: Boolean,
         val mode: Int,
-        val bulkApps: Array<String>?,
         val config: JsonConfig.AppConfig,
         val customSubtitle: String?,
     )
