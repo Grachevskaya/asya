@@ -25,7 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger
  * saying so, because silence is what makes these things hard to place later.
  */
 object KernelPolicy {
-
     private const val TAG = "KernelPolicy"
 
     private const val FAMILY_NAME = "tosya"
@@ -72,18 +71,29 @@ object KernelPolicy {
     /**
      * Hands the pairs over: header, pages, commit. Returns whether the kernel took them.
      */
+
     /**
      * Stream generation. 0 means "no stream" in the kernel, so this counts from 1.
      */
     // The wire is BEGIN{kind}, BATCH{count} + records, END{}. No generation: nothing sweeps.
-    private fun beginBlob(kind: Int): ByteArray = ByteBuffer.allocate(4)
-        .order(ByteOrder.LITTLE_ENDIAN).putInt(kind).array()
+    private fun beginBlob(kind: Int): ByteArray =
+        ByteBuffer
+            .allocate(4)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(kind)
+            .array()
 
     private fun endBlob(): ByteArray = ByteArray(0)
 
-    private fun batchBlob(count: Int, records: ByteArray): ByteArray =
-        ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-            .putInt(count).array() + records
+    private fun batchBlob(
+        count: Int,
+        records: ByteArray,
+    ): ByteArray =
+        ByteBuffer
+            .allocate(4)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(count)
+            .array() + records
 
     fun push(pairs: IntArray): Boolean {
         val blob = ByteBuffer.allocate(pairs.size * 4).order(ByteOrder.LITTLE_ENDIAN)
@@ -132,14 +142,15 @@ object KernelPolicy {
                     val n = minOf((PAGE_BYTES - 8) / 16, total - at)
                     val rec = ByteBuffer.allocate(n * 16).order(ByteOrder.LITTLE_ENDIAN)
                     for (i in 0 until n) {
-                        rec.putInt(KAUX_OP_ADD)
+                        rec
+                            .putInt(KAUX_OP_ADD)
                             .putInt(pairs[(at + i) * 2])
                             .putInt(pairs[(at + i) * 2 + 1])
                             .putInt(0)
                     }
 
                     if (!call(fd, family, CMD_BATCH, batchBlob(n, rec.array()))) {
-                        logE(TAG) { "The kernel refused ${n} policy record(s) at $at" }
+                        logE(TAG) { "The kernel refused $n policy record(s) at $at" }
                         return false
                     }
 
@@ -174,8 +185,13 @@ object KernelPolicy {
      * entry -- action, uid, the byte offset of the path inside this same blob, and the path's size
      * including its trailing NUL. The kernel resolves the path itself, so no inode is sent.
      */
+
     /** A file the kernel was told about: who it belongs to, and what it was when it was added. */
-    private data class Held(val uid: Int, val dev: Long, val ino: Long)
+    private data class Held(
+        val uid: Int,
+        val dev: Long,
+        val ino: Long,
+    )
 
     /** What the kernel holds, as this side last handed it over. */
     private val held = HashMap<String, Held>()
@@ -202,12 +218,13 @@ object KernelPolicy {
         val adds = ArrayList<Triple<Int, String, Held>>()
         val identityOf = LinkedHashMap<String, Held>()
         for ((path, uid) in current) {
-            val stat = try {
-                Os.stat(path)
-            } catch (cause: Throwable) {
-                logD(TAG) { "No identity for " + path + ": " + cause.message }
-                continue
-            }
+            val stat =
+                try {
+                    Os.stat(path)
+                } catch (cause: Throwable) {
+                    logD(TAG) { "No identity for " + path + ": " + cause.message }
+                    continue
+                }
 
             val identity = Held(uid, stat.st_dev, stat.st_ino)
             adds.add(Triple(uid, path, identity))
@@ -219,10 +236,12 @@ object KernelPolicy {
          * needs the old identity dropped before the path can be added again -- the file system may
          * have handed that number to the new file.
          */
-        val replaced = identityOf.filter { (path, identity) ->
-            val before = held[path]
-            before != null && (before.dev != identity.dev || before.ino != identity.ino)
-        }.values
+        val replaced =
+            identityOf
+                .filter { (path, identity) ->
+                    val before = held[path]
+                    before != null && (before.dev != identity.dev || before.ino != identity.ino)
+                }.values
 
         /*
          * A file that is gone has to be named for the kernel to let go of it, and the path it was
@@ -241,15 +260,22 @@ object KernelPolicy {
          * terminated and padded to four bytes so the next record stays aligned. An add
          * leaves dev/ino 0 -- the kernel resolves the path and stamps the entry with it.
          */
-        val addRecords = adds.map { (uid, path, _) ->
-            val bytes = path.toByteArray(Charsets.UTF_8)
-            ByteBuffer.allocate(24 + ((bytes.size + 4) and 3.inv()))
-                .order(ByteOrder.LITTLE_ENDIAN)
-                .putInt(KAUX_OP_ADD).putInt(uid)
-                .putInt(0).putInt(0).putInt(0).putInt(bytes.size + 1)
-                .put(bytes).put(0)
-                .array()
-        }
+        val addRecords =
+            adds.map { (uid, path, _) ->
+                val bytes = path.toByteArray(Charsets.UTF_8)
+                ByteBuffer
+                    .allocate(24 + ((bytes.size + 4) and 3.inv()))
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .putInt(KAUX_OP_ADD)
+                    .putInt(uid)
+                    .putInt(0)
+                    .putInt(0)
+                    .putInt(0)
+                    .putInt(bytes.size + 1)
+                    .put(bytes)
+                    .put(0)
+                    .array()
+            }
 
         /*
          * A drop carries identity only -- shadow_drop_id(dev, (hi << 32) | lo) -- with no
@@ -257,15 +283,19 @@ object KernelPolicy {
          * one it was. Writing the uid into the dev field made every drop match nothing and
          * still count as success, so the table grew by one per install instead of holding.
          */
-        val delRecords = (drops.values + replaced).distinctBy { it.dev to it.ino }.map { gone ->
-            ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN)
-                .putInt(KAUX_OP_DEL).putInt(0)
-                .putInt((gone.dev and 0xffffffffL).toInt())
-                .putInt((gone.ino and 0xffffffffL).toInt())
-                .putInt(((gone.ino ushr 32) and 0xffffffffL).toInt())
-                .putInt(0)
-                .array()
-        }
+        val delRecords =
+            (drops.values + replaced).distinctBy { it.dev to it.ino }.map { gone ->
+                ByteBuffer
+                    .allocate(24)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .putInt(KAUX_OP_DEL)
+                    .putInt(0)
+                    .putInt((gone.dev and 0xffffffffL).toInt())
+                    .putInt((gone.ino and 0xffffffffL).toInt())
+                    .putInt(((gone.ino ushr 32) and 0xffffffffL).toInt())
+                    .putInt(0)
+                    .array()
+            }
 
         return try {
             val fd = Os.socket(OsConstants.AF_NETLINK, OsConstants.SOCK_RAW, NETLINK_GENERIC)
@@ -406,7 +436,11 @@ object KernelPolicy {
     }
 
     /** The fixed structure, field by field, in the order the kernel writes it. */
-    private fun parseStatus(reply: ByteArray, offset: Int, length: Int): Map<String, String> {
+    private fun parseStatus(
+        reply: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Map<String, String> {
         if (length < 128) return linkedMapOf("state" to "short status, $length bytes")
         if (i32(reply, offset) != STATUS_MAGIC) return linkedMapOf("state" to "wrong magic")
 
@@ -429,13 +463,20 @@ object KernelPolicy {
         )
     }
 
-    private fun u32(bytes: ByteArray, at: Int): Long =
+    private fun u32(
+        bytes: ByteArray,
+        at: Int,
+    ): Long =
         (bytes[at].toLong() and 0xff) or
             ((bytes[at + 1].toLong() and 0xff) shl 8) or
             ((bytes[at + 2].toLong() and 0xff) shl 16) or
             ((bytes[at + 3].toLong() and 0xff) shl 24)
 
-    private fun cString(bytes: ByteArray, at: Int, max: Int): String {
+    private fun cString(
+        bytes: ByteArray,
+        at: Int,
+        max: Int,
+    ): String {
         var end = at
         while (end < at + max && end < bytes.size && bytes[end] != 0.toByte()) end++
         return String(bytes, at, end - at, Charsets.UTF_8)
@@ -455,11 +496,12 @@ object KernelPolicy {
 
         Os.write(fd, message, 0, message.size)
 
-        val reply = receive(fd)
-            ?: run {
-                logE(TAG) { "No answer when asking for the $FAMILY_NAME family" }
-                return 0
-            }
+        val reply =
+            receive(fd)
+                ?: run {
+                    logE(TAG) { "No answer when asking for the $FAMILY_NAME family" }
+                    return 0
+                }
 
         // The attributes begin right after the two headers: nlmsghdr (16) and genlmsghdr (4).
         // Starting anywhere else walks the chain from the middle of an attribute and reads a length
@@ -477,7 +519,12 @@ object KernelPolicy {
     }
 
     /** One command, one reply: a netlink error of zero is the acknowledgment. */
-    private fun call(fd: FileDescriptor, family: Int, cmd: Int, payload: ByteArray): Boolean {
+    private fun call(
+        fd: FileDescriptor,
+        family: Int,
+        cmd: Int,
+        payload: ByteArray,
+    ): Boolean {
         val body = attribute(ATTR_BLOB, payload)
         val seq = sequence.getAndIncrement()
         val message = message(family, cmd, seq, body, NLM_F_REQUEST or NLM_F_ACK)
@@ -503,16 +550,23 @@ object KernelPolicy {
         }
     }
 
-    private fun receive(fd: FileDescriptor): ByteArray? = try {
-        val buffer = ByteArray(64 * 1024)
-        val read = Os.read(fd, buffer, 0, buffer.size)
-        if (read <= 0) null else buffer.copyOf(read)
-    } catch (cause: Throwable) {
-        logD(TAG) { "Nothing to read from the kernel half: ${'$'}{cause.message}" }
-        null
-    }
+    private fun receive(fd: FileDescriptor): ByteArray? =
+        try {
+            val buffer = ByteArray(64 * 1024)
+            val read = Os.read(fd, buffer, 0, buffer.size)
+            if (read <= 0) null else buffer.copyOf(read)
+        } catch (cause: Throwable) {
+            logD(TAG) { "Nothing to read from the kernel half: ${'$'}{cause.message}" }
+            null
+        }
 
-    private fun message(family: Int, cmd: Int, seq: Int, payload: ByteArray, flags: Int): ByteArray {
+    private fun message(
+        family: Int,
+        cmd: Int,
+        seq: Int,
+        payload: ByteArray,
+        flags: Int,
+    ): ByteArray {
         val length = NLMSG_HEADER + GENL_HEADER + payload.size
         val out = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN)
         out.putInt(length)
@@ -527,7 +581,10 @@ object KernelPolicy {
         return out.array()
     }
 
-    private fun attribute(type: Int, data: ByteArray): ByteArray {
+    private fun attribute(
+        type: Int,
+        data: ByteArray,
+    ): ByteArray {
         val padded = (data.size + 3) and 3.inv()
         val out = ByteBuffer.allocate(4 + padded).order(ByteOrder.LITTLE_ENDIAN)
         out.putShort((4 + data.size).toShort())
@@ -536,10 +593,15 @@ object KernelPolicy {
         return out.array()
     }
 
-    private fun u16(bytes: ByteArray, at: Int): Int =
-        (bytes[at].toInt() and 0xff) or ((bytes[at + 1].toInt() and 0xff) shl 8)
+    private fun u16(
+        bytes: ByteArray,
+        at: Int,
+    ): Int = (bytes[at].toInt() and 0xff) or ((bytes[at + 1].toInt() and 0xff) shl 8)
 
-    private fun i32(bytes: ByteArray, at: Int): Int =
+    private fun i32(
+        bytes: ByteArray,
+        at: Int,
+    ): Int =
         (bytes[at].toInt() and 0xff) or
             ((bytes[at + 1].toInt() and 0xff) shl 8) or
             ((bytes[at + 2].toInt() and 0xff) shl 16) or

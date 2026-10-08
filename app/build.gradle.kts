@@ -23,12 +23,13 @@ android {
     packaging {
         dex.useLegacyPackaging = true
         resources {
-            excludes += arrayOf(
-                "/META-INF/*",
-                "/META-INF/androidx/**",
-                "/kotlin/**",
-                "/okhttp3/**",
-            )
+            excludes +=
+                arrayOf(
+                    "/META-INF/*",
+                    "/META-INF/androidx/**",
+                    "/kotlin/**",
+                    "/okhttp3/**",
+                )
         }
     }
 }
@@ -47,26 +48,36 @@ fun generateSupportedLocales(): String {
     foundLocales.append("new String[]{")
 
     fun appendLangCode(code: String) {
-        foundLocales.append("\"").append(code).append("\"").append(",")
+        foundLocales
+            .append("\"")
+            .append(code)
+            .append("\"")
+            .append(",")
     }
 
     appendLangCode("SYSTEM")
 
-    fileTree(android.sourceSets["main"].res.directories.first()).files.mapNotNull {
-        if (it.name == "strings.xml") {
-            val baseName = it.parent.substringAfterLast(File.separator)
-            if (baseName == "values") {
-                "en"
+    fileTree(
+        android.sourceSets["main"]
+            .res.directories
+            .first(),
+    ).files
+        .mapNotNull {
+            if (it.name == "strings.xml") {
+                val baseName = it.parent.substringAfterLast(File.separator)
+                if (baseName == "values") {
+                    "en"
+                } else {
+                    baseName
+                        .substringAfter('-')
+                        .replace("-r", "-")
+                }
             } else {
-                baseName.substringAfter('-')
-                    .replace("-r", "-")
+                null
             }
-        } else {
-            null
-        }
-    }.sortedWith { file1, file2 ->
-        file1.compareTo(file2)
-    }.forEach { appendLangCode(it) }
+        }.sortedWith { file1, file2 ->
+            file1.compareTo(file2)
+        }.forEach { appendLangCode(it) }
 
     return "${foundLocales.removeSuffix(",")}}"
 }

@@ -6,7 +6,6 @@ import com.v7878.unsafe.invoke.EmulatedStackFrame
 import com.v7878.unsafe.invoke.EmulatedStackFrame.RETURN_VALUE_IDX
 import io.github.grachevskaya.asya.common.lazyWithReceiver
 import io.github.grachevskaya.asya.zygote.service.SystemServerHook
-import java.lang.reflect.Constructor
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 
@@ -35,35 +34,31 @@ object ZLUtils {
      */
     val EmulatedStackFrame.argTypes by lazyWithReceiver { dumpArgTypes() }
 
-    internal fun EmulatedStackFrame.dumpArgs(skipFirst: Boolean = false): Array<Any?> {
-        return mutableListOf<Any?>().let {
+    internal fun EmulatedStackFrame.dumpArgs(skipFirst: Boolean = false): Array<Any?> =
+        mutableListOf<Any?>().let {
             val begin = if (skipFirst) 1 else 0
-            for (index in begin ..< type().parameterCount()) {
+            for (index in begin..<type().parameterCount()) {
                 it.add(getArgument(index))
             }
 
             it.toTypedArray()
         }
-    }
 
-    internal fun EmulatedStackFrame.dumpArgTypes(skipFirst: Boolean = false): Array<Class<*>> {
-        return mutableListOf<Class<*>>().let {
+    internal fun EmulatedStackFrame.dumpArgTypes(skipFirst: Boolean = false): Array<Class<*>> =
+        mutableListOf<Class<*>>().let {
             val begin = if (skipFirst) 1 else 0
-            for (index in begin ..< type().parameterCount()) {
+            for (index in begin..<type().parameterCount()) {
                 it.add(getArgumentType(index))
             }
 
             it.toTypedArray()
         }
-    }
 
     /**
      * - `index == 0: thisObject`
      * - `index >= 1: function args`
      */
-    fun EmulatedStackFrame.getArgumentType(index: Int): Class<*> {
-        return accessor().getArgumentType(index)
-    }
+    fun EmulatedStackFrame.getArgumentType(index: Int): Class<*> = accessor().getArgumentType(index)
 
     /**
      * - `index == 0: thisObject`
@@ -98,7 +93,10 @@ object ZLUtils {
         return null
     }
 
-    fun EmulatedStackFrame.setArgument(index: Int, value: Any?) {
+    fun EmulatedStackFrame.setArgument(
+        index: Int,
+        value: Any?,
+    ) {
         val accessor = accessor()
 
         when (accessor.getArgumentShorty(index)) {
@@ -121,47 +119,83 @@ object ZLUtils {
         }
     }
 
-    fun getStaticIntField(className: String, name: String) = getDeclaredField(
+    fun getStaticIntField(
+        className: String,
+        name: String,
+    ) = getDeclaredField(
         Class.forName(className),
         name,
     ).getInt(null)
 
-    fun getIntField(obj: Any, name: String, clazz: Class<*>? = null) = getDeclaredField(clazz ?: obj.javaClass, name).getInt(obj)
+    fun getIntField(
+        obj: Any,
+        name: String,
+        clazz: Class<*>? = null,
+    ) = getDeclaredField(clazz ?: obj.javaClass, name).getInt(obj)
 
-    fun getBooleanField(obj: Any, name: String, clazz: Class<*>? = null) = getDeclaredField(clazz ?: obj.javaClass, name).getBoolean(obj)
+    fun getBooleanField(
+        obj: Any,
+        name: String,
+        clazz: Class<*>? = null,
+    ) = getDeclaredField(clazz ?: obj.javaClass, name).getBoolean(obj)
 
-    fun getObjectField(obj: Any, name: String, clazz: Class<*>? = null): Any? = getDeclaredField(clazz ?: obj.javaClass, name).get(obj)
+    fun getObjectField(
+        obj: Any,
+        name: String,
+        clazz: Class<*>? = null,
+    ): Any? = getDeclaredField(clazz ?: obj.javaClass, name).get(obj)
 
-    fun setBooleanField(obj: Any, name: String, value: Boolean, clazz: Class<*>? = null) {
+    fun setBooleanField(
+        obj: Any,
+        name: String,
+        value: Boolean,
+        clazz: Class<*>? = null,
+    ) {
         val field = getDeclaredField(clazz ?: obj.javaClass, name).apply { isAccessible = true }
         field.setBoolean(obj, value)
     }
 
-    fun callMethodWithTypes(obj: Any, name: String, types: Array<Class<*>>, args: Array<Any>): Any? {
-        return getDeclaredMethod(
+    fun callMethodWithTypes(
+        obj: Any,
+        name: String,
+        types: Array<Class<*>>,
+        args: Array<Any>,
+    ): Any? =
+        getDeclaredMethod(
             obj.javaClass,
             name,
             *types,
         ).apply { isAccessible = true }.invoke(obj, *args)
-    }
 
-    fun callMethod(obj: Any, name: String, vararg args: Any): Any? {
-        return getDeclaredMethod(
+    fun callMethod(
+        obj: Any,
+        name: String,
+        vararg args: Any,
+    ): Any? =
+        getDeclaredMethod(
             obj.javaClass,
             name,
-            *args.map { it.javaClass }.toTypedArray()
+            *args.map { it.javaClass }.toTypedArray(),
         ).apply { isAccessible = true }.invoke(obj, *args)
-    }
 
-    fun callStaticMethod(clazz: Class<*>, name: String, vararg args: Any): Any? {
-        return getDeclaredMethod(
+    fun callStaticMethod(
+        clazz: Class<*>,
+        name: String,
+        vararg args: Any,
+    ): Any? =
+        getDeclaredMethod(
             clazz,
             name,
-            *args.map { it.javaClass }.toTypedArray()
+            *args.map { it.javaClass }.toTypedArray(),
         ).apply { isAccessible = true }.invoke(null, *args)
-    }
 
-    fun findMethod(className: String, name: String, isDeclared: Boolean = false, systemClassLoader: Boolean = false, vararg args: Class<*>): Method {
+    fun findMethod(
+        className: String,
+        name: String,
+        isDeclared: Boolean = false,
+        systemClassLoader: Boolean = false,
+        vararg args: Class<*>,
+    ): Method {
         val clazz = if (systemClassLoader) Class.forName(className, true, SystemServerHook.classLoader) else Class.forName(className)
         return if (isDeclared) {
             clazz.getDeclaredMethod(name, *args)
@@ -170,7 +204,10 @@ object ZLUtils {
         }
     }
 
-    fun findField(clazz: Class<*>, name: String): Field? {
+    fun findField(
+        clazz: Class<*>,
+        name: String,
+    ): Field? {
         var currentClazz: Class<*> = clazz
         var field: Field? = null
 
@@ -182,7 +219,8 @@ object ZLUtils {
         return field
     }
 
-    fun EmulatedStackFrame.shortyEquals(index: Int, shorty: Char): Boolean {
-        return accessor().getArgumentShorty(index) == shorty
-    }
+    fun EmulatedStackFrame.shortyEquals(
+        index: Int,
+        shorty: Char,
+    ): Boolean = accessor().getArgumentShorty(index) == shorty
 }

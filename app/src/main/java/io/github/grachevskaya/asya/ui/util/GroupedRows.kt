@@ -22,14 +22,25 @@ enum class RowGroup { Single, Top, Middle, Bottom }
  * to the same shape so it stays inside them.
  */
 fun Context.groupedRowBackground(group: RowGroup): Drawable {
-    val outer = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge, 28)
-    val inner = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerExtraSmall, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraSmall, 4)
-    val (top, bottom) = when (group) {
-        RowGroup.Single -> outer to outer
-        RowGroup.Top -> outer to inner
-        RowGroup.Middle -> inner to inner
-        RowGroup.Bottom -> inner to outer
-    }
+    val outer =
+        cornerSize(
+            com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge,
+            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge,
+            28,
+        )
+    val inner =
+        cornerSize(
+            com.google.android.material.R.attr.shapeAppearanceCornerExtraSmall,
+            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraSmall,
+            4,
+        )
+    val (top, bottom) =
+        when (group) {
+            RowGroup.Single -> outer to outer
+            RowGroup.Top -> outer to inner
+            RowGroup.Middle -> inner to inner
+            RowGroup.Bottom -> inner to outer
+        }
 
     fun model() =
         ShapeAppearanceModel
@@ -53,7 +64,10 @@ fun Context.groupedRowBackground(group: RowGroup): Drawable {
 }
 
 /** The same, for a row that knows its place by position. */
-fun Context.groupedRowBackground(position: Int, count: Int): Drawable =
+fun Context.groupedRowBackground(
+    position: Int,
+    count: Int,
+): Drawable =
     groupedRowBackground(
         when {
             count <= 1 -> RowGroup.Single

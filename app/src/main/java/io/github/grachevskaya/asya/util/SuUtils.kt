@@ -1,7 +1,6 @@
 package io.github.grachevskaya.asya.util
 
 object SuUtils {
-
     fun execPrivileged(cmd: String): Boolean {
         return try {
             val exec = Runtime.getRuntime().exec("su -c $cmd")

@@ -55,9 +55,12 @@ class LogAdapter(
             val matcher = pattern.matcher(text)
             if (matcher.matches()) {
                 val level = matcher.group(1) ?: return null
-                if (level in debugLevels && PrefManager.logFilter_level > 0 ||
-                    level == "INFO" && PrefManager.logFilter_level > 1 ||
-                    level == "WARN" && PrefManager.logFilter_level > 2
+                if (level in debugLevels &&
+                    PrefManager.logFilter_level > 0 ||
+                    level == "INFO" &&
+                    PrefManager.logFilter_level > 1 ||
+                    level == "WARN" &&
+                    PrefManager.logFilter_level > 2
                 ) {
                     return null
                 }

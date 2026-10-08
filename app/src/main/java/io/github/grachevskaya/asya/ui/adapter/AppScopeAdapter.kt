@@ -8,14 +8,15 @@ class AppScopeAdapter(
     hideMyself: Boolean,
     firstFilter: ((String) -> Boolean)?,
 ) : AppSelectAdapter(hideMyself, firstFilter) {
-
     private inline var String.isChecked
         get() = checked.contains(this)
         set(value) {
             if (value) checked.add(this) else checked.remove(this)
         }
 
-    inner class ViewHolder(view: AppItemView) : AppSelectAdapter.ViewHolder(view) {
+    inner class ViewHolder(
+        view: AppItemView,
+    ) : AppSelectAdapter.ViewHolder(view) {
         init {
             view.setOnClickListener {
                 val packageName = filteredList[absoluteAdapterPosition]
@@ -32,12 +33,16 @@ class AppScopeAdapter(
         }
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): ViewHolder {
         val view = AppItemView(parent.context, true)
-        view.layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
+        view.layoutParams =
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
         return ViewHolder(view)
     }
 }

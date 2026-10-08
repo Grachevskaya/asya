@@ -22,12 +22,16 @@ opposite directions. Its resources have to come from the apk, which is what the 
  * The prefixes are the ones the platform's own inflater knows, so a layout written with plain widget
  * names inflates here exactly as it does anywhere else.
  */
-class HostedInflater(context: Context) : LayoutInflater(context) {
-
+class HostedInflater(
+    context: Context,
+) : LayoutInflater(context) {
     /** A copy on another context: what this class is for, said again for the next one. */
     override fun cloneInContext(newContext: Context): LayoutInflater = HostedInflater(newContext)
 
-    override fun onCreateView(name: String, attrs: AttributeSet): View? {
+    override fun onCreateView(
+        name: String,
+        attrs: AttributeSet,
+    ): View? {
         for (prefix in PREFIXES) {
             try {
                 return createView(name, prefix, attrs)

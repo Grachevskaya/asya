@@ -71,6 +71,7 @@ public class ManagerInstrumentation extends Instrumentation {
     }
 
     @Override
+    @android.annotation.SuppressLint("NewApi")
     public void callActivityOnNewIntent(android.app.Activity p0, android.content.Intent p1, android.app.ComponentCaller p2) {
         original.callActivityOnNewIntent(p0, p1, p2);
     }
@@ -81,6 +82,7 @@ public class ManagerInstrumentation extends Instrumentation {
     }
 
     @Override
+    @android.annotation.SuppressLint("NewApi")
     public void callActivityOnPictureInPictureRequested(android.app.Activity p0) {
         original.callActivityOnPictureInPictureRequested(p0);
     }
@@ -246,6 +248,7 @@ public class ManagerInstrumentation extends Instrumentation {
     }
 
     @Override
+    @android.annotation.SuppressLint("NewApi")
     public void resetInTouchMode() {
         original.resetInTouchMode();
     }
@@ -370,7 +373,7 @@ public class ManagerInstrumentation extends Instrumentation {
     }
 
     /**
-     * The launch the framework uses. The extras carry an int and a token; when both are ours, an
+     * The launch the framework uses. The extras carry an int and a token; when both are this module's, an
      * instance of the manager's own activity is built out of the apk the module carries, on the
      * resources that apk holds, and returned instead of the activity that was asked for.
      */

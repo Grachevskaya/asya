@@ -9,7 +9,7 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logI
  * in memory when the device goes down -- and a clean shutdown is the one moment it can still be
  * written. ShutdownThread.shutdown and .reboot are the doors every power off goes through, and
  * both are entered before the sequence starts, which is why this is a hook before and not after:
- * once they return there is no longer a system to write to.
+ * once they return, the system is gone and there is nothing left to write to.
  *
  * The log needs nothing here: it is appended line by line as it happens.
  */

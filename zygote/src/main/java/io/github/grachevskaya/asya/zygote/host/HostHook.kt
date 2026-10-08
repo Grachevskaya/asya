@@ -1,10 +1,10 @@
 package io.github.grachevskaya.asya.zygote.host
 
 import android.app.ActivityThread
+import com.v7878.zygisk.ZygoteLoader
 import io.github.grachevskaya.asya.zygote.service.BulkHooker
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.thisObject
-import com.v7878.zygisk.ZygoteLoader
 
 /**
  * The way in, installed where the framework will pass it.
@@ -20,7 +20,6 @@ import com.v7878.zygisk.ZygoteLoader
  * the ActivityThread it was made on.
  */
 object HostHook {
-
     private const val TAG = "HostHook"
 
     private const val ACTIVITY_THREAD_CLASS = "android.app.ActivityThread"
@@ -44,9 +43,10 @@ object HostHook {
         logI(TAG) { "The bind hook is in place" }
     }
 
-    private fun thisProcess(): String? = try {
-        ZygoteLoader.getPackageName()
-    } catch (cause: Throwable) {
-        null
-    }
+    private fun thisProcess(): String? =
+        try {
+            ZygoteLoader.getPackageName()
+        } catch (cause: Throwable) {
+            null
+        }
 }

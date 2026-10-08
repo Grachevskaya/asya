@@ -1,6 +1,10 @@
 # Formatting for this tree. ktlint reads this file; editors that understand .editorconfig do too.
 root = true
 
+# The style the tree is written in: the Android one, not ktlint_official, whose extra wrapping
+# opinions this codebase does not follow.
+ktlint_code_style = android_studio
+
 [*.{kt,kts}]
 indent_size = 4
 indent_style = space
@@ -10,3 +14,7 @@ indent_style = space
 # fix. Everything else ktlint checks stays on.
 ktlint_standard_no-consecutive-comments = disabled
 ktlint_standard_kdoc = disabled
+
+# The properties the hook files hold are named after the framework members they stand for, and the
+# whole point of the name is that it is the framework one. That is a rule this tree keeps off.
+ktlint_standard_property-naming = disabled

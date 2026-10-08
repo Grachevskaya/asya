@@ -9,12 +9,12 @@ import android.content.res.Resources
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.isVisible
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.addCallback
 import androidx.navigation.NavOptions
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.NavHostFragment
@@ -26,7 +26,6 @@ import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.databinding.ActivityMainBinding
 import io.github.grachevskaya.asya.host.HostContext
-import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.ThemeUtils
 import io.github.grachevskaya.asya.util.ConfigUtils
@@ -205,6 +204,7 @@ class MainActivity
             return android.graphics.drawable.AdaptiveIconDrawable(background, foreground)
         }
 
+        @Suppress("DEPRECATION") // The colour travels in the three argument form, which is the deprecated one.
         override fun onCreate(savedInstanceState: Bundle?) {
             hosted?.let { setTheme(it.appThemeStyle()) }
 
@@ -252,9 +252,10 @@ class MainActivity
              * predictive back gesture is already showing while the finger is down. This one would
              * otherwise stand in front of that and take the preview away.
              */
-            val backHome = onBackPressedDispatcher.addCallback(this, enabled = false) {
-                navHostIn(binding.root)?.navController?.navigate(R.id.nav_home)
-            }
+            val backHome =
+                onBackPressedDispatcher.addCallback(this, enabled = false) {
+                    navHostIn(binding.root)?.navController?.navigate(R.id.nav_home)
+                }
 
             setupNavigation(binding, host, backHome)
         }
@@ -397,7 +398,8 @@ class MainActivity
                  * behind it. Everywhere else the library pops the page and this stays out of the way.
                  */
                 backHome.isEnabled =
-                    destination.id != R.id.nav_home && controller.previousBackStackEntry == null
+                    destination.id != R.id.nav_home &&
+                    controller.previousBackStackEntry == null
             }
 
             if (fadeInOnCreate) {

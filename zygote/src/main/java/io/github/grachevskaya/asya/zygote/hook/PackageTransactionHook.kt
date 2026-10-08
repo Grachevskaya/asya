@@ -30,7 +30,10 @@ class PackageTransactionHook : IFrameworkHook {
         hookRemove(PACKAGE_MANAGER_SERVICE_CLASS, "deletePackageX")
     }
 
-    private fun hookInstall(className: String, methodName: String) {
+    private fun hookInstall(
+        className: String,
+        methodName: String,
+    ) {
         hooker.hookAfter(className, methodName) { _, frame, _ ->
             onInstalled(frame.getArgument(1))
         }
@@ -39,7 +42,10 @@ class PackageTransactionHook : IFrameworkHook {
         }
     }
 
-    private fun hookRemove(className: String, methodName: String) {
+    private fun hookRemove(
+        className: String,
+        methodName: String,
+    ) {
         hooker.hookAfter(className, methodName) { _, _, _ ->
             service.onPackagesChanged()
         }
@@ -74,27 +80,34 @@ class PackageTransactionHook : IFrameworkHook {
 
     private fun readName(request: Any): String? {
         for (method in arrayOf("getName", "getPackageName")) {
-            val value = runCatching {
-                request.javaClass.getMethod(method).invoke(request) as? String
-            }.getOrNull()
+            val value =
+                runCatching {
+                    request.javaClass.getMethod(method).invoke(request) as? String
+                }.getOrNull()
             if (!value.isNullOrEmpty()) return value
         }
-        val field = runCatching {
-            request.javaClass.getDeclaredField("mName").apply { isAccessible = true }.get(request) as? String
-        }.getOrNull()
+        val field =
+            runCatching {
+                request.javaClass
+                    .getDeclaredField("mName")
+                    .apply { isAccessible = true }
+                    .get(request) as? String
+            }.getOrNull()
         if (!field.isNullOrEmpty()) return field
         logW(TAG) { "No package name readable from " + request.javaClass.name + "; its default config is skipped" }
         return null
     }
 
     private fun isReplacement(request: Any): Boolean {
-        val direct = runCatching {
-            request.javaClass.getMethod("isInstallReplace").invoke(request) as? Boolean
-        }.getOrNull()
+        val direct =
+            runCatching {
+                request.javaClass.getMethod("isInstallReplace").invoke(request) as? Boolean
+            }.getOrNull()
         if (direct != null) return direct
-        val flags = runCatching {
-            request.javaClass.getMethod("getInstallFlags").invoke(request) as? Int
-        }.getOrNull()
+        val flags =
+            runCatching {
+                request.javaClass.getMethod("getInstallFlags").invoke(request) as? Int
+            }.getOrNull()
         // PackageManager.INSTALL_REPLACE_EXISTING
         return flags != null && (flags and 0x00000002) != 0
     }

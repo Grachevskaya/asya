@@ -22,12 +22,24 @@ import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
  * so a background set here is gone for a frame, which is the flash that was seen. What the decoration
  * draws, nothing else touches, and the row's own background stays what it is: the press.
  */
+@android.annotation.SuppressLint("RestrictedApi")
 fun PreferenceFragmentCompat.stylePreferenceRows() {
     val list = listView
+    //noinspection RestrictedApi
     val adapter = list.adapter as? PreferenceGroupAdapter ?: return
     val inset = 16.dpToPx.toInt()
-    val outer = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Large, 16)
-    val inner = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerSmall, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Small, 8)
+    val outer =
+        cornerSize(
+            com.google.android.material.R.attr.shapeAppearanceCornerLarge,
+            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Large,
+            16,
+        )
+    val inner =
+        cornerSize(
+            com.google.android.material.R.attr.shapeAppearanceCornerSmall,
+            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_Small,
+            8,
+        )
     val card =
         MaterialShapeDrawable().apply {
             fillColor =
@@ -43,12 +55,14 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
         list.removeItemDecorationAt(0)
     }
 
+    //noinspection RestrictedApi
     fun isGroupTitle(position: Int) = position != RecyclerView.NO_POSITION && adapter.getItem(position) is PreferenceCategory
 
     fun edges(position: Int): Pair<Float, Float> {
         var first = position
         while (first > 0 && !isGroupTitle(first - 1)) first--
         var last = position
+        //noinspection RestrictedApi
         while (last + 1 < adapter.itemCount && !isGroupTitle(last + 1)) last++
 
         return Pair(
@@ -130,7 +144,9 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
                         .setBottomRightCorner(CornerFamily.ROUNDED, bottom)
                         .build(),
                 ).apply {
-                    fillColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+                    fillColor =
+                        android.content.res.ColorStateList
+                            .valueOf(android.graphics.Color.WHITE)
                 },
             )
     }
@@ -184,7 +200,6 @@ fun PreferenceFragmentCompat.stylePreferenceRows() {
     }
 
     restyle.run()
-
 }
 
 /** One observer per list, however many times a screen is shown again. */

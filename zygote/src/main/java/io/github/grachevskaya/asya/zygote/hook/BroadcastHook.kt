@@ -42,11 +42,12 @@ class BroadcastHook : IFrameworkHook {
                     hook = ::enqueueBroadcastLocked,
                 )
             } else {
-                val targetClass = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    BROADCAST_QUEUE_CLASS
-                } else {
-                    BROADCAST_QUEUE_IMPL_CLASS
-                }
+                val targetClass =
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        BROADCAST_QUEUE_CLASS
+                    } else {
+                        BROADCAST_QUEUE_IMPL_CLASS
+                    }
 
                 hookBefore(
                     targetClass,
@@ -92,11 +93,12 @@ class BroadcastHook : IFrameworkHook {
             returnValue.result = null
 
             val resultTo = getObjectField(record, "resultTo") as? IIntentReceiver
-            val haveATarget = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                true // getObjectField(record, "callerApp") != null
-            } else {
-                getObjectField(record, "resultToApp") != null
-            }
+            val haveATarget =
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    true // getObjectField(record, "callerApp") != null
+                } else {
+                    getObjectField(record, "resultToApp") != null
+                }
 
             if (resultTo != null && haveATarget) {
                 resultTo.performReceive(

@@ -54,11 +54,12 @@ class ActivityHook : IFrameworkHook {
                 // just an empty hook that does nothing
             }
 
-            val aPRFClazz = when(Build.VERSION.SDK_INT) {
-                Build.VERSION_CODES.Q, Build.VERSION_CODES.R -> PACKAGE_MANAGER_SERVICE_CLASS
-                Build.VERSION_CODES.S, Build.VERSION_CODES.S_V2 -> PMS_COMPUTER_ENGINE_CLASS
-                else -> COMPUTER_ENGINE_CLASS
-            }
+            val aPRFClazz =
+                when (Build.VERSION.SDK_INT) {
+                    Build.VERSION_CODES.Q, Build.VERSION_CODES.R -> PACKAGE_MANAGER_SERVICE_CLASS
+                    Build.VERSION_CODES.S, Build.VERSION_CODES.S_V2 -> PMS_COMPUTER_ENGINE_CLASS
+                    else -> COMPUTER_ENGINE_CLASS
+                }
 
             hookAfter(
                 aPRFClazz,
@@ -77,17 +78,18 @@ class ActivityHook : IFrameworkHook {
                 if (caller != null) {
                     logV(TAG) { "@$methodName: $caller requested a resolve info" }
 
-                    val filteredList = list.filter { resolveInfo ->
-                        val targetApp = resolveInfo.getPackageName()
+                    val filteredList =
+                        list.filter { resolveInfo ->
+                            val targetApp = resolveInfo.getPackageName()
 
-                        logV(TAG) { "@$methodName: Checking $targetApp for $caller" }
+                            logV(TAG) { "@$methodName: Checking $targetApp for $caller" }
 
-                        (!service.shouldHideActivityLaunch(caller, targetApp, callingUserId)).apply {
-                            if (!this) {
-                                logD(TAG) { "@$methodName: insecure query from $caller, target: $targetApp" }
+                            (!service.shouldHideActivityLaunch(caller, targetApp, callingUserId)).apply {
+                                if (!this) {
+                                    logD(TAG) { "@$methodName: insecure query from $caller, target: $targetApp" }
+                                }
                             }
                         }
-                    }
 
                     val removed = list.size - filteredList.size
                     if (removed > 0) {
@@ -106,9 +108,11 @@ class ActivityHook : IFrameworkHook {
 
             if (!isHookAvailable(aPRFClazz, "applyPostResolutionFilter")) {
                 // Try to keep compatibility when InxLocker detected
-                val isInxLockerAvailable = pms.isPackageAvailable(
-                    "io.github.chimio.inxlocker", 0,
-                )
+                val isInxLockerAvailable =
+                    pms.isPackageAvailable(
+                        "io.github.chimio.inxlocker",
+                        0,
+                    )
 
                 if (isInxLockerAvailable) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -133,7 +137,7 @@ class ActivityHook : IFrameworkHook {
                             ACTIVITY_STARTER_CLASS,
                             "startActivity",
                         ) { _, frame, returnValue ->
-                            // we have no way other than hardcoding, it is 13th argument in AOSP code
+                            // The signature is fixed, so the position is written here: it is the 13th argument in AOSP code.
                             val callingUserId = getUserFromCallingUid(frame.getArgument(13) as Int)
                             val caller = frame.args.firstOrNullWithType<String>() ?: return@hookBefore
                             val intent = frame.args.firstOrNullWithType<Intent>() ?: return@hookBefore

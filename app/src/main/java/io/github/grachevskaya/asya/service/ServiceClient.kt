@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
 import android.os.UserHandle
 import android.os.UserManager
 import android.util.Log
@@ -13,7 +11,6 @@ import io.github.grachevskaya.asya.BuildConfig
 import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.common.FilterHolder
 import java.io.File
-import java.lang.reflect.Proxy
 
 /**
  * The manager reads and writes what the service reads and writes. There is no binder, because
@@ -304,7 +301,6 @@ object ServiceClient {
             Log.e(TAG, "Could not read $packageName for user $userId", cause)
             null
         }
-
 
     fun forceStop(packageName: String) = forceStop(packageName, 0)
 

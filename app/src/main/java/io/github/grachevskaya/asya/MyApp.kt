@@ -9,11 +9,9 @@ import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.StatusRefresh
-import io.github.grachevskaya.asya.util.ConfigUtils.getLocale
 import io.github.grachevskaya.asya.util.PackageHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import java.util.Locale
 
 class MyApp : Application() {
     companion object {
@@ -21,6 +19,7 @@ class MyApp : Application() {
     }
 
     val globalScope = CoroutineScope(Dispatchers.Default)
+
     fun loadConfiguration() {
         if (ServiceClient.serviceVersion > 0) {
             ConfigManager.init()

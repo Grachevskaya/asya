@@ -8,7 +8,6 @@ import io.github.grachevskaya.asya.ui.adapter.AppScopeAdapter
 import io.github.grachevskaya.asya.ui.util.navController
 
 class ScopeFragment : AppSelectFragment() {
-
     private lateinit var checked: MutableSet<String>
 
     override val firstComparator: Comparator<String> = Comparator.comparing { !checked.contains(it) }
@@ -21,16 +20,22 @@ class ScopeFragment : AppSelectFragment() {
     override val adapter by lazy {
         val args by navArgs<ScopeFragmentArgs>()
         checked = args.checked.toMutableSet()
-        if (!args.filterOnlyEnabled) AppScopeAdapter(checked, args.hideMyself, null)
-        else AppScopeAdapter(checked, args.hideMyself) {
-            ConfigManager.getAppConfig(it)?.useWhitelist == args.isWhiteList
+        if (!args.filterOnlyEnabled) {
+            AppScopeAdapter(checked, args.hideMyself, null)
+        } else {
+            AppScopeAdapter(checked, args.hideMyself) {
+                ConfigManager.getAppConfig(it)?.useWhitelist == args.isWhiteList
+            }
         }
     }
 
     override fun onBack() {
-        setFragmentResult(requestKey, Bundle().apply {
-            putStringArrayList("checked", ArrayList(checked))
-        })
+        setFragmentResult(
+            requestKey,
+            Bundle().apply {
+                putStringArrayList("checked", ArrayList(checked))
+            },
+        )
         navController.navigateUp()
     }
 }

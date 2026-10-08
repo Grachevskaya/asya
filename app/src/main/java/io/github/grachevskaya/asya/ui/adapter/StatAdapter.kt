@@ -2,9 +2,7 @@ package io.github.grachevskaya.asya.ui.adapter
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
-import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
 import io.github.grachevskaya.asya.common.FilterHolder
 import io.github.grachevskaya.asya.databinding.StatItemViewBinding

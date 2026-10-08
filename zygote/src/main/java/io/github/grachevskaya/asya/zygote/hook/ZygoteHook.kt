@@ -2,7 +2,6 @@ package io.github.grachevskaya.asya.zygote.hook
 
 import android.os.Build
 import com.v7878.unsafe.invoke.EmulatedStackFrame
-import io.github.grachevskaya.asya.common.CollectionUtils.firstOrNullWithType
 import io.github.grachevskaya.asya.common.CollectionUtils.lastOrNullWithType
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI

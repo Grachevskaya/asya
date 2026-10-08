@@ -5,7 +5,7 @@ import io.github.grachevskaya.asya.common.Utils.conflictedModules
 
 object PackageManagerUtils {
     fun IPackageManager.isConflictingModuleInstalled(): Boolean {
-        // we shouldn't apply hooks when the HMA/HMAL detected
+        // No hooks are applied when HMA or HMAL is detected.
         return conflictedModules.any { isPackageAvailable(it, 0) }
     }
 }

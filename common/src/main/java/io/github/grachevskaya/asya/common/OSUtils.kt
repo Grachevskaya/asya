@@ -3,18 +3,22 @@ package io.github.grachevskaya.asya.common
 import android.content.Context
 import android.os.Build
 import android.os.SystemProperties
-import io.github.grachevskaya.asya.common.Utils.isPackageAvailable
 import io.github.grachevskaya.asya.common.BuildConfig
+import io.github.grachevskaya.asya.common.Utils.isPackageAvailable
 
 object OSUtils {
-    private val PACKAGES_TO_CHECK = listOf(
-        "com.google.android.gms",
-        "com.android.vending",
-        "com.google.android.inputmethod.latin",
-        "com.google.android.ext.shared",
-    )
+    private val PACKAGES_TO_CHECK =
+        listOf(
+            "com.google.android.gms",
+            "com.android.vending",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.ext.shared",
+        )
 
-    fun collectOSInfo(context: Context, serviceVersion: String?) = buildString {
+    fun collectOSInfo(
+        context: Context,
+        serviceVersion: String?,
+    ) = buildString {
         val pkgMgr = context.packageManager
 
         append("asya Log")

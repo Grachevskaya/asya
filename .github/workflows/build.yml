@@ -242,7 +242,7 @@ jobs:
         id: build
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon prebuild :app:assemble :zygote:assemble
+          ./gradlew --no-daemon prebuild check :app:assemble :zygote:assemble
           echo "zip=$(ls zygote/build/outputs/magisk/release/*.zip)" >> "$GITHUB_OUTPUT"
       - name: Write the package into the ninth slot
         env:

@@ -6,7 +6,6 @@ import android.os.SystemProperties
 import androidx.annotation.RequiresApi
 import io.github.grachevskaya.asya.common.OSUtils
 import io.github.grachevskaya.asya.common.PropertyUtils
-import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.zygote.service.SystemServerHook
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logE
@@ -46,10 +45,11 @@ class AppDataIsolationHook : IFrameworkHook {
         )
     }
 
-    private val isAltIsolationEnabled get() = config.let {
-        (!PropertyUtils.isAppDataIsolationEnabled && it.altAppDataIsolation) ||
-        (!PropertyUtils.isVoldAppDataIsolationEnabled && it.altVoldAppDataIsolation)
-    }
+    private val isAltIsolationEnabled get() =
+        config.let {
+            (!PropertyUtils.isAppDataIsolationEnabled && it.altAppDataIsolation) ||
+                (!PropertyUtils.isVoldAppDataIsolationEnabled && it.altVoldAppDataIsolation)
+        }
 
     @SuppressLint("PrivateApi")
     override fun load() {
@@ -61,16 +61,18 @@ class AppDataIsolationHook : IFrameworkHook {
                 PROCESS_LIST_CLASS,
                 "startProcess",
             ) { _, frame, _ ->
-                val processListClazz = runCatching {
-                    Class.forName(PROCESS_LIST_CLASS, true, SystemServerHook.classLoader)
-                }.getOrNull()
+                val processListClazz =
+                    runCatching {
+                        Class.forName(PROCESS_LIST_CLASS, true, SystemServerHook.classLoader)
+                    }.getOrNull()
 
                 if (config.altAppDataIsolation) {
-                    val isEnabled = getBooleanField(
-                        frame.thisObject,
-                        APPDATA_ISOLATION_ENABLED,
-                        processListClazz,
-                    )
+                    val isEnabled =
+                        getBooleanField(
+                            frame.thisObject,
+                            APPDATA_ISOLATION_ENABLED,
+                            processListClazz,
+                        )
 
                     if (!isEnabled) {
                         setBooleanField(
@@ -91,11 +93,12 @@ class AppDataIsolationHook : IFrameworkHook {
                         voldHookSkipped = true
                         logE(TAG) { "ProcessList - FUSE storage is not enabled, skip vold hook" }
                     } else {
-                        val isolationEnabled = getBooleanField(
-                            frame.thisObject,
-                            VOLD_APPDATA_ISOLATION_ENABLED,
-                            processListClazz,
-                        )
+                        val isolationEnabled =
+                            getBooleanField(
+                                frame.thisObject,
+                                VOLD_APPDATA_ISOLATION_ENABLED,
+                                processListClazz,
+                            )
 
                         if (!isolationEnabled) {
                             setBooleanField(
@@ -114,7 +117,7 @@ class AppDataIsolationHook : IFrameworkHook {
             if (OSUtils.isSamsung()) {
                 hookAfter(
                     STORAGE_MANAGER_SERVICE_LIFECYCLE_CLASS,
-                    "onStart"
+                    "onStart",
                 ) { _, frame, _ ->
                     if (config.altVoldAppDataIsolation && !voldHookSkipped) {
                         val fuseEnabled = SystemProperties.getBoolean(FUSE_PROP, false)
@@ -125,15 +128,17 @@ class AppDataIsolationHook : IFrameworkHook {
                             return@hookAfter
                         }
 
-                        val storageManagerService = getObjectField(
-                            frame.thisObject,
-                            "mStorageManagerService",
-                        )!!
+                        val storageManagerService =
+                            getObjectField(
+                                frame.thisObject,
+                                "mStorageManagerService",
+                            )!!
 
-                        val isolationEnabled = getBooleanField(
-                            storageManagerService,
-                            VOLD_APPDATA_ISOLATION_ENABLED,
-                        )
+                        val isolationEnabled =
+                            getBooleanField(
+                                storageManagerService,
+                                VOLD_APPDATA_ISOLATION_ENABLED,
+                            )
 
                         if (!isolationEnabled) {
                             setBooleanField(
@@ -162,10 +167,11 @@ class AppDataIsolationHook : IFrameworkHook {
 
                         val storageManagerService = frame.thisObject
 
-                        val isolationEnabled = getBooleanField(
-                            storageManagerService,
-                            VOLD_APPDATA_ISOLATION_ENABLED,
-                        )
+                        val isolationEnabled =
+                            getBooleanField(
+                                storageManagerService,
+                                VOLD_APPDATA_ISOLATION_ENABLED,
+                            )
 
                         if (!isolationEnabled) {
                             setBooleanField(
@@ -185,35 +191,42 @@ class AppDataIsolationHook : IFrameworkHook {
                 ) { _, frame, returnValue ->
                     if (config.altVoldAppDataIsolation) {
                         val app = frame.args.find { it?.javaClass?.simpleName == "ProcessRecord" }!!
-                        val uid = runCatching {
-                            getIntField(app, "uid")
-                        }.getOrElse {
-                            getIntField(app, "uid", processRecordIntClass)
-                        }
+                        val uid =
+                            runCatching {
+                                getIntField(app, "uid")
+                            }.getOrElse {
+                                getIntField(app, "uid", processRecordIntClass)
+                            }
 
                         val apps = getCallingApps(pms, uid)
 
                         if (config.detailLog) {
-                            val processName = runCatching {
-                                getObjectField(app, "processName")
-                            }.getOrElse {
-                                getObjectField(app, "processName", processRecordIntClass)
-                            }
-                            val mountNode = runCatching {
-                                getIntField(app, "mMountMode")
-                            }.getOrDefault(0)
-                            val isolated = runCatching {
-                                getBooleanField(app, "isolated")
-                            }.getOrElse {
-                                getBooleanField(app, "isolated", processRecordIntClass)
-                            }
-                            val appZygote = runCatching {
-                                getBooleanField(app, "appZygote")
-                            }.getOrElse {
-                                getBooleanField(app, "appZygote", processRecordIntClass)
-                            }
+                            val processName =
+                                runCatching {
+                                    getObjectField(app, "processName")
+                                }.getOrElse {
+                                    getObjectField(app, "processName", processRecordIntClass)
+                                }
+                            val mountNode =
+                                runCatching {
+                                    getIntField(app, "mMountMode")
+                                }.getOrDefault(0)
+                            val isolated =
+                                runCatching {
+                                    getBooleanField(app, "isolated")
+                                }.getOrElse {
+                                    getBooleanField(app, "isolated", processRecordIntClass)
+                                }
+                            val appZygote =
+                                runCatching {
+                                    getBooleanField(app, "appZygote")
+                                }.getOrElse {
+                                    getBooleanField(app, "appZygote", processRecordIntClass)
+                                }
 
-                            logD(TAG) { "@needsStorageDataIsolation $uid and ${apps.contentToString()} - $processName value without override: ${returnValue.result}, mount node: $mountNode, isolated: $isolated, appZygote: $appZygote" }
+                            logD(TAG) {
+                                "@needsStorageDataIsolation $uid and ${apps.contentToString()} - $processName value without override: ${returnValue.result}, mount node: $mountNode, isolated: $isolated, appZygote: $appZygote"
+                            }
                         }
 
                         if (apps.any { service.isAppDataIsolationExcluded(it) }) {

@@ -1,7 +1,6 @@
 package io.github.grachevskaya.asya.zygote.service
 
 import io.github.grachevskaya.asya.common.FilterHolder
-import io.github.grachevskaya.asya.common.RiskyPackageUtils
 
 class AsyaServiceDataHolder {
     private val filterCountLock = Any()

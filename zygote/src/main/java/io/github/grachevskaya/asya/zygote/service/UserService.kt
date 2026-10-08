@@ -13,12 +13,14 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logI
  * which is the name the system side calls.
  */
 object UserService {
-
     private const val TAG = "Asya-UserService"
 
     var service: AsyaService? = null
 
-    fun register(pms: IPackageManager, pmn: Any?) {
+    fun register(
+        pms: IPackageManager,
+        pmn: Any?,
+    ) {
         assert(service == null) { "You cannot register the service more than once" }
 
         logI(TAG) { "Initialize AsyaService - Version ${BuildConfig.APP_VERSION_NAME}" }

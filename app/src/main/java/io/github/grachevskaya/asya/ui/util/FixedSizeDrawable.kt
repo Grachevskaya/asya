@@ -5,8 +5,10 @@ import android.graphics.ColorFilter
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
 
-class FixedSizeDrawable(private val drawable: Drawable, private val sizePx: Int) : Drawable() {
-
+class FixedSizeDrawable(
+    private val drawable: Drawable,
+    private val sizePx: Int,
+) : Drawable() {
     override fun getIntrinsicWidth() = sizePx
 
     override fun getIntrinsicHeight() = sizePx

@@ -8,10 +8,9 @@ import android.provider.Settings.Global.getFloat
 
 class AccessibilityUtils {
     companion object {
-        fun isAnimationEnabled(cr: ContentResolver): Boolean {
-            return getFloat(cr, ANIMATOR_DURATION_SCALE, 1.0f) > 0.0f
-                && getFloat(cr, TRANSITION_ANIMATION_SCALE, 1.0f) > 0.0f
-                && getFloat(cr, WINDOW_ANIMATION_SCALE, 1.0f) > 0.0f
-        }
+        fun isAnimationEnabled(cr: ContentResolver): Boolean =
+            getFloat(cr, ANIMATOR_DURATION_SCALE, 1.0f) > 0.0f &&
+                getFloat(cr, TRANSITION_ANIMATION_SCALE, 1.0f) > 0.0f &&
+                getFloat(cr, WINDOW_ANIMATION_SCALE, 1.0f) > 0.0f
     }
 }

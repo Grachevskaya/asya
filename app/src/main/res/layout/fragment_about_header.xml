@@ -54,7 +54,7 @@
                 android:src="@drawable/baseline_arrow_back_24"
                 android:background="?attr/selectableItemBackground"
                 android:padding="8dp"
-                android:tint="?attr/colorOnBackground"
+                app:tint="?attr/colorOnBackground"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 

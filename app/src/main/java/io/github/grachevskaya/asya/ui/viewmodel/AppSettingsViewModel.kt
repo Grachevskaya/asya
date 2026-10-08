@@ -4,14 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import io.github.grachevskaya.asya.common.JsonConfig
 
-class AppSettingsViewModel(val pack: Pack) : ViewModel() {
-
-    class Factory(private val pack: Pack) : ViewModelProvider.Factory {
+class AppSettingsViewModel(
+    val pack: Pack,
+) : ViewModel() {
+    class Factory(
+        private val pack: Pack,
+    ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(AppSettingsViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")
                 return AppSettingsViewModel(pack) as T
-            } else throw IllegalArgumentException("Unknown ViewModel class")
+            } else {
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
         }
     }
 

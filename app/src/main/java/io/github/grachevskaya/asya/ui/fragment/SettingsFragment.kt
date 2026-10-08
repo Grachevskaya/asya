@@ -1,35 +1,21 @@
 package io.github.grachevskaya.asya.ui.fragment
 
-import android.content.Intent
-import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.View
-import android.view.ViewGroup
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.ListPreference
-import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
-import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceGroupAdapter
-import androidx.preference.SeekBarPreference
 import androidx.preference.SwitchPreferenceCompat
-import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.androidbroadcast.vbpd.viewBinding
 import io.github.grachevskaya.asya.BuildConfig
-import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.R
-import io.github.grachevskaya.asya.common.Constants
-import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.OSUtils
 import io.github.grachevskaya.asya.common.PropertyUtils
 import io.github.grachevskaya.asya.data.AppConstants
@@ -40,10 +26,8 @@ import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.activity.MainActivity
 import io.github.grachevskaya.asya.ui.fragment.AppSettingsV2FragmentArgs
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
-import io.github.grachevskaya.asya.ui.util.dpToPx
 import io.github.grachevskaya.asya.ui.util.enabledString
 import io.github.grachevskaya.asya.ui.util.navigate
-import io.github.grachevskaya.asya.ui.util.recreateMainActivity
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 import io.github.grachevskaya.asya.ui.util.setupToolbar
 import io.github.grachevskaya.asya.ui.util.showNeedRebootToast
@@ -54,7 +38,6 @@ import io.github.grachevskaya.asya.ui.util.withDisableButton
 import io.github.grachevskaya.asya.util.ConfigUtils.getLocale
 import io.github.grachevskaya.asya.util.SuUtils
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.Locale
 
 class SettingsFragment :
@@ -246,8 +229,7 @@ class SettingsFragment :
                         MaterialAlertDialogBuilder(
                             requireContext(),
                             R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
-                        )
-                            .setIcon(R.drawable.outline_info_24)
+                        ).setIcon(R.drawable.outline_info_24)
                             .setTitle(R.string.settings_warning)
                             .setMessage(R.string.settings_vold_warning)
                             .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -446,8 +428,7 @@ class SettingsFragment :
                     MaterialAlertDialogBuilder(
                         requireContext(),
                         R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
-                    )
-                        .setIcon(R.drawable.outline_cleaning_services_24)
+                    ).setIcon(R.drawable.outline_cleaning_services_24)
                         .setTitle(R.string.settings_clear_uninstalled_app_configs)
                         .setMessage(R.string.settings_no_undone_warning)
                         .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -499,8 +480,7 @@ class SettingsFragment :
                     MaterialAlertDialogBuilder(
                         requireContext(),
                         R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
-                    )
-                        .setIcon(R.drawable.outline_cleaning_services_24)
+                    ).setIcon(R.drawable.outline_cleaning_services_24)
                         .setTitle(R.string.settings_reset_default)
                         .setMessage(R.string.settings_irreversible_confirmation)
                         .setPositiveButton(R.string.yes) { _, _ ->
@@ -518,8 +498,7 @@ class SettingsFragment :
                 MaterialAlertDialogBuilder(
                     requireActivity(),
                     R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
-                )
-                    .setIcon(R.drawable.outline_cleaning_services_24)
+                ).setIcon(R.drawable.outline_cleaning_services_24)
                     .setTitle(R.string.settings_force_clean_env)
                     .setMessage(R.string.settings_is_clean_env_summary)
                     .setPositiveButton(android.R.string.ok) { _, _ ->

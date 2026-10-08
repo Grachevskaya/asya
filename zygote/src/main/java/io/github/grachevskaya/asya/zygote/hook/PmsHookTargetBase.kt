@@ -10,7 +10,6 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logV
 import java.util.concurrent.atomic.AtomicReference
 
 abstract class PmsHookTargetBase : IFrameworkHook {
-
     @PublishedApi
     internal val lastFilteredApp: AtomicReference<String?> = AtomicReference(null)
 

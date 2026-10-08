@@ -10,46 +10,41 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.annotation.DrawableRes
+import androidx.core.animation.doOnEnd
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.core.animation.doOnEnd
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import coil3.request.crossfade
-import coil3.request.placeholder
-import coil3.request.transformations
-import coil3.transform.CircleCropTransformation
-import dev.androidbroadcast.vbpd.viewBinding
-import io.github.grachevskaya.asya.common.Constants
-import io.github.grachevskaya.asya.data.AppConstants
-import io.github.grachevskaya.asya.service.PrefManager
-import io.github.grachevskaya.asya.ui.util.AccessibilityUtils
-import io.github.grachevskaya.asya.ui.util.ThemeUtils.attrDrawable
-import io.github.grachevskaya.asya.ui.util.ThemeUtils.homeItemBackgroundColor
 import com.google.android.material.shape.CornerFamily
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.shape.ShapeAppearanceModel
-import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
-import io.github.grachevskaya.asya.ui.util.dpToPx
-import io.github.grachevskaya.asya.ui.util.navController
-import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
+import dev.androidbroadcast.vbpd.viewBinding
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.BuildConfig
+import io.github.grachevskaya.asya.data.AppConstants
 import io.github.grachevskaya.asya.databinding.FragmentAboutBinding
 import io.github.grachevskaya.asya.databinding.FragmentAboutListItemBinding
-import org.json.JSONObject
+import io.github.grachevskaya.asya.ui.util.AccessibilityUtils
+import io.github.grachevskaya.asya.ui.util.ThemeUtils.attrDrawable
+import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
+import io.github.grachevskaya.asya.ui.util.ThemeUtils.homeItemBackgroundColor
+import io.github.grachevskaya.asya.ui.util.navController
+import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
+import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Suppress("DEPRECATION")
 class AboutFragment : Fragment(R.layout.fragment_about) {
     private val binding by viewBinding(FragmentAboutBinding::bind)
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
 
         setEdge2EdgeFlags(binding.root, bottom = 0) { _, _, _, bottom ->
@@ -66,7 +61,7 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
 
         with(binding.aboutHeader) {
             with(backButton.parent as View) {
-                setOnClickListener { navController.navigateUp()  }
+                setOnClickListener { navController.navigateUp() }
                 backgroundTintList = tint
             }
 
@@ -93,9 +88,15 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         // The header comes from the shape system: it was three xml shapes with 24dp written into
         // them, and the tokens are where Material 3 expressive keeps the corners its own surfaces
         // are rounded with. The tone is the one the home cards use.
-        val panel = cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge, 24)
+        val panel =
+            cornerSize(
+                com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge,
+                com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge,
+                24,
+            )
         val panelFill =
-            android.content.res.ColorStateList.valueOf(requireContext().homeItemBackgroundColor())
+            android.content.res.ColorStateList
+                .valueOf(requireContext().homeItemBackgroundColor())
 
         binding.aboutHeader.appInfoTop.background =
             MaterialShapeDrawable(
@@ -124,11 +125,16 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
                                 .builder()
                                 .setAllCorners(
                                     CornerFamily.ROUNDED,
-                                    cornerSize(com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge, com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge, 24),
-                                )
-                                .build(),
+                                    cornerSize(
+                                        com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge,
+                                        com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge,
+                                        24,
+                                    ),
+                                ).build(),
                         ).apply {
-                            fillColor = android.content.res.ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)
+                            fillColor =
+                                android.content.res.ColorStateList
+                                    .valueOf(android.graphics.Color.TRANSPARENT)
                         },
                         attrDrawable(android.R.attr.selectableItemBackground),
                     ),
@@ -181,7 +187,7 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             addDevItem(this, R.drawable.cont_k, "Ketal", "HMA Collaborator", "https://github.com/keta1")
             addDevItem(this, R.drawable.cont_aviraxp, "aviraxp", "HMA Collaborator", "https://github.com/aviraxp")
             addDevItem(this, R.drawable.cont_icon_designer, "辉少菌", "HMA Icon Designer", "http://www.coolapk.com/u/1560270")
-            addDevItem(this, R.drawable.cont_cpp_master,  "LoveSy", "HMA Idea Provider", "https://github.com/yujincheng08")
+            addDevItem(this, R.drawable.cont_cpp_master, "LoveSy", "HMA Idea Provider", "https://github.com/yujincheng08")
         }
 
         // Original HMA devs
@@ -196,7 +202,13 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         }
     }
 
-    fun addDevItem(layout: LinearLayout, @DrawableRes avatarResId: Int, name: String, desc: String, url: String?) {
+    fun addDevItem(
+        layout: LinearLayout,
+        @DrawableRes avatarResId: Int,
+        name: String,
+        desc: String,
+        url: String?,
+    ) {
         val newLayout = FragmentAboutListItemBinding.inflate(layoutInflater)
         setOnClickUrl(newLayout.root, url)
 
@@ -204,13 +216,14 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
             val icon = newLayout.aboutPersonIcon
             val context = requireContext()
             viewLifecycleOwner.lifecycleScope.launch {
-                val bitmap = withContext(Dispatchers.IO) {
-                    BitmapFactory.decodeResource(context.resources, avatarResId)
-                }
+                val bitmap =
+                    withContext(Dispatchers.IO) {
+                        BitmapFactory.decodeResource(context.resources, avatarResId)
+                    }
                 icon.setImageDrawable(
                     RoundedBitmapDrawableFactory.create(context.resources, bitmap).apply {
                         isCircular = true
-                    }
+                    },
                 )
             }
         } else {
@@ -225,7 +238,12 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         (layout.parent as? ViewGroup)?.styleSegmentedCards(requireContext())
     }
 
-    fun addLibraryItem(layout: LinearLayout, name: String, desc: String, url: String) {
+    fun addLibraryItem(
+        layout: LinearLayout,
+        name: String,
+        desc: String,
+        url: String,
+    ) {
         val newLayout = FragmentAboutListItemBinding.inflate(layoutInflater)
         setOnClickUrl(newLayout.root, url)
 
@@ -237,7 +255,10 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
         layout.styleSegmentedCards(requireContext())
     }
 
-    fun setOnClickUrl(view: View, url: String?) {
+    fun setOnClickUrl(
+        view: View,
+        url: String?,
+    ) {
         if (url == null) return
 
         view.setOnClickListener {
@@ -252,7 +273,10 @@ class AboutFragment : Fragment(R.layout.fragment_about) {
      * then laid out from nothing up to it, with the rows clipped by the list on the way. What moves
      * is the list making room for itself, not its contents fading in.
      */
-    private fun unfold(list: View, opening: Boolean) {
+    private fun unfold(
+        list: View,
+        opening: Boolean,
+    ) {
         if (opening) {
             val width = binding.listPeople.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
             list.measure(

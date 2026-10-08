@@ -20,7 +20,10 @@ object BrowserUtils {
     @Volatile
     private var useAltMethodForBrowserCheck = false
 
-    fun getDefaultBrowser(pmn: Any?, userId: Int): String? {
+    fun getDefaultBrowser(
+        pmn: Any?,
+        userId: Int,
+    ): String? {
         if (!useAltMethodForBrowserCheck) {
             val pmnMethod = getDefaultBrowserPMN(pmn, userId)
 
@@ -34,27 +37,32 @@ object BrowserUtils {
         return getDefaultBrowserPM(userId)
     }
 
-    fun getWebviewProvider(): String? = binderLocalScope {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                webViewService.currentWebViewPackage?.packageName
-            } else {
-                webViewService.currentWebViewPackageName
+    fun getWebviewProvider(): String? =
+        binderLocalScope {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    webViewService.currentWebViewPackage?.packageName
+                } else {
+                    webViewService.currentWebViewPackageName
+                }
+            } catch (_: Throwable) {
+                Settings.Global.getString(contentResolver, WEBVIEW_PROVIDER_KEY)
             }
-        } catch (_: Throwable) {
-            Settings.Global.getString(contentResolver, WEBVIEW_PROVIDER_KEY)
         }
-    }
 
     /**
      * This method is mainly called on non-Samsung devices
      */
-    private fun getDefaultBrowserPMN(pmn: Any?, userId: Int): String? {
+    private fun getDefaultBrowserPMN(
+        pmn: Any?,
+        userId: Int,
+    ): String? {
         return try {
-            val pms = getObjectField(
-                pmn ?: return null,
-                "mPm",
-            ) as? PackageManagerService ?: return null
+            val pms =
+                getObjectField(
+                    pmn ?: return null,
+                    "mPm",
+                ) as? PackageManagerService ?: return null
 
             when (Build.VERSION.SDK_INT) {
                 Build.VERSION_CODES.Q -> pms.getDefaultBrowserPackageName(userId)
@@ -73,8 +81,8 @@ object BrowserUtils {
     /**
      * This method is mainly called on Samsung devices
      */
-    private fun getDefaultBrowserPM(userId: Int): String? {
-        return try {
+    private fun getDefaultBrowserPM(userId: Int): String? =
+        try {
             callMethodWithTypes(
                 packageManager,
                 "getDefaultBrowserPackageNameAsUser",
@@ -86,11 +94,10 @@ object BrowserUtils {
 
             null
         }
-    }
 
     private val webViewService by lazy {
         IWebViewUpdateService.Stub.asInterface(
-            ServiceManager.getService(WEBVIEW_UPDATE_SERVICE)
+            ServiceManager.getService(WEBVIEW_UPDATE_SERVICE),
         )
     }
 }

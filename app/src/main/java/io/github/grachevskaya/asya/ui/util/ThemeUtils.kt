@@ -2,9 +2,9 @@ package io.github.grachevskaya.asya.ui.util
 
 import android.content.Context
 import android.content.res.Configuration
-import android.util.TypedValue
 import android.graphics.Color
 import android.graphics.drawable.Drawable
+import android.util.TypedValue
 import androidx.annotation.AttrRes
 import androidx.annotation.ColorInt
 import androidx.annotation.ColorRes
@@ -108,6 +108,7 @@ object ThemeUtils {
         @AttrRes themeAttrId: Int,
     ): Drawable? {
         val attributes = obtainStyledAttributes(intArrayOf(themeAttrId))
+        //noinspection RestrictedApi
         val drawable = MaterialResources.getDrawable(this, attributes, 0)
         attributes.recycle()
         return drawable

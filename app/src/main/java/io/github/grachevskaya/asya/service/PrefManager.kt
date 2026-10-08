@@ -1,16 +1,10 @@
 package io.github.grachevskaya.asya.service
 
-import android.content.ComponentName
 import android.content.Context.MODE_PRIVATE
-import android.content.pm.PackageManager
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.edit
 import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
-import io.github.grachevskaya.asya.common.Constants
-import io.github.grachevskaya.asya.data.AppConstants
 import io.github.grachevskaya.asya.ui.util.get
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.runBlocking
 
 object PrefManager {
     private const val PREF_LOCALE = "language"
@@ -20,7 +14,6 @@ object PrefManager {
     private const val PREF_THEME_COLOR = "theme_color"
 
     private const val PREF_BYPASS_RISKY_PACKAGE_WARNING = "bypass_risky_package_warning"
-
 
     private const val PREF_APP_FILTER_SHOW_SYSTEM = "app_filter_show_system"
     private const val PREF_APP_FILTER_SORT_METHOD = "app_filter_sort_method"

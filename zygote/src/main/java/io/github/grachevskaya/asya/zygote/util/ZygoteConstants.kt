@@ -38,5 +38,4 @@ object ZygoteConstants {
 
     const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
     const val USB_FUNCTION_ADB = "adb"
-
 }

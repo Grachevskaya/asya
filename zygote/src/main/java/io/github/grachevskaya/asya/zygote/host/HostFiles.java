@@ -82,6 +82,7 @@ public final class HostFiles {
     }
 
     /** The prefix the shared directory is named with. Nothing about it says what is inside. */
+
     /**
      * The manager apk as this host's own state directory holds it, or null when that copy is not
      * there yet. That directory is where the root side puts it together with its oat file.
@@ -159,6 +160,7 @@ public final class HostFiles {
     }
 
     private static int descriptorNumber(FileInputStream stream) throws Exception {
+        //noinspection SoonBlockedPrivateApi
         java.lang.reflect.Field fd = FileInputStream.class.getDeclaredField("fd");
         fd.setAccessible(true);
         Object descriptor = fd.get(stream);

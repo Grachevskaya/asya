@@ -3,7 +3,6 @@ package io.github.grachevskaya.asya.ui.fragment
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.flowWithLifecycle

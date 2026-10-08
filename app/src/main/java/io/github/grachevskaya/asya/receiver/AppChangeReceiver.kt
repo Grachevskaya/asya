@@ -10,26 +10,30 @@ import io.github.grachevskaya.asya.ui.util.StatusRefresh
 import io.github.grachevskaya.asya.util.PackageHelper
 
 class AppChangeReceiver : BroadcastReceiver() {
-
     companion object {
         private const val TAG = "AppChangeReceiver"
 
-        private val actions = setOf(
-            Intent.ACTION_PACKAGE_ADDED,
-            Intent.ACTION_PACKAGE_REMOVED,
-            Intent.ACTION_PACKAGE_REPLACED
-        )
+        private val actions =
+            setOf(
+                Intent.ACTION_PACKAGE_ADDED,
+                Intent.ACTION_PACKAGE_REMOVED,
+                Intent.ACTION_PACKAGE_REPLACED,
+            )
 
         fun register(context: Context) {
-            val filter = IntentFilter().apply {
-                actions.forEach(::addAction)
-                addDataScheme("package")
-            }
+            val filter =
+                IntentFilter().apply {
+                    actions.forEach(::addAction)
+                    addDataScheme("package")
+                }
             context.registerReceiver(AppChangeReceiver(), filter)
         }
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         if (intent.action in actions) {
             ServiceClient.log(Log.INFO, TAG, "Received intent: $intent")
             PackageHelper.invalidateCache()

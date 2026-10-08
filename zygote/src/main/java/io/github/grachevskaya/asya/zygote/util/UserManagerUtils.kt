@@ -8,29 +8,37 @@ import io.github.grachevskaya.asya.zygote.util.ServiceUtils.waitForService
 object UserManagerUtils {
     private val userService by lazy { waitForService(Context.USER_SERVICE) as? IUserManager }
 
-    fun getUsers(excludePartial: Boolean, excludeDying: Boolean, excludePreCreated: Boolean): List<UserInfo> {
-        return try {
+    fun getUsers(
+        excludePartial: Boolean,
+        excludeDying: Boolean,
+        excludePreCreated: Boolean,
+    ): List<UserInfo> =
+        try {
             userService!!.getUsers(excludePartial, excludeDying, excludePreCreated)
         } catch (_: Throwable) {
             userService!!.getUsers(excludeDying)
         }
-    }
 
     val userIds get(): IntArray {
         return try {
-            val users = getUsers(
-                excludePartial = false,
-                excludeDying = false,
-                excludePreCreated = false,
-            )
+            val users =
+                getUsers(
+                    excludePartial = false,
+                    excludeDying = false,
+                    excludePreCreated = false,
+                )
 
             try {
-                mutableSetOf<Int>().apply {
-                    for (user in users) {
-                        userService!!.getProfileIds(
-                            user.id, false).forEach(::add)
-                    }
-                }.toIntArray()
+                mutableSetOf<Int>()
+                    .apply {
+                        for (user in users) {
+                            userService!!
+                                .getProfileIds(
+                                    user.id,
+                                    false,
+                                ).forEach(::add)
+                        }
+                    }.toIntArray()
             } catch (_: Throwable) {
                 users.map { it.id }.toIntArray()
             }

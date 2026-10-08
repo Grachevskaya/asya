@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val configVerCode =  rootProject.extra["configVerCode"] as Int
+val configVerCode = rootProject.extra["configVerCode"] as Int
 val serviceVerCode = rootProject.extra["serviceVerCode"] as Int
 val minBackupVerCode = rootProject.extra["minBackupVerCode"] as Int
 val appPackageName = rootProject.extra["appPackageName"] as String
@@ -36,4 +36,6 @@ dependencies {
     api(libs.kotlinx.serialization.json)
 
     compileOnly(projects.stub)
+
+    testImplementation(libs.junit)
 }

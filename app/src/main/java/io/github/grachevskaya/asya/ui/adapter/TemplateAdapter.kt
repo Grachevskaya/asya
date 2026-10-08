@@ -3,7 +3,6 @@ package io.github.grachevskaya.asya.ui.adapter
 import android.annotation.SuppressLint
 import android.content.res.ColorStateList
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.service.ConfigManager

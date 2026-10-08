@@ -34,22 +34,33 @@ class BulkHooker {
 
     internal val hooks = ConcurrentHashMap<String, CopyOnWriteArrayList<HookElement>>()
 
-    internal fun isHookAvailable(clazz: String, method: String) = findHookElement(clazz, method) != null
+    internal fun isHookAvailable(
+        clazz: String,
+        method: String,
+    ) = findHookElement(clazz, method) != null
 
-    private fun findHookElement(clazz: String, method: String) =
-        hooks[clazz]?.firstOrNull { it.methodName == method }
+    private fun findHookElement(
+        clazz: String,
+        method: String,
+    ) = hooks[clazz]?.firstOrNull { it.methodName == method }
 
-    private fun addHook(clazz: String, methodName: String, argumentCount: Int, impl: HookTransformer) {
+    private fun addHook(
+        clazz: String,
+        methodName: String,
+        argumentCount: Int,
+        impl: HookTransformer,
+    ) {
         val isConstructorHook = methodName == CONSTRUCTOR_METHOD_NAME
         if (isConstructorHook && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             logI(ZygoteEntry.TAG) { "Constructor hook removed for Android 12-: $clazz -> $methodName($argumentCount)" }
         }
 
-        val element = HookElement(
-            impl = impl,
-            methodName = methodName,
-            argumentCount = argumentCount,
-        )
+        val element =
+            HookElement(
+                impl = impl,
+                methodName = methodName,
+                argumentCount = argumentCount,
+            )
 
         if (applyHook(clazz, element)) {
             hooks.computeIfAbsent(clazz) { CopyOnWriteArrayList() }.add(element)
@@ -139,12 +150,13 @@ class BulkHooker {
             return false
         }
 
-        var curClazz = try {
-            Class.forName(clazz, true, loader)
-        } catch (ex: ClassNotFoundException) {
-            logE(ZygoteEntry.TAG, ex) { "Class $clazz not found" }
-            return false
-        }
+        var curClazz =
+            try {
+                Class.forName(clazz, true, loader)
+            } catch (ex: ClassNotFoundException) {
+                logE(ZygoteEntry.TAG, ex) { "Class $clazz not found" }
+                return false
+            }
 
         while (
             !element.hookFinished &&
@@ -154,20 +166,23 @@ class BulkHooker {
             resolveExecutable(curClazz, element.methodName, element.argumentCount)?.let { executable ->
                 logD(ZygoteEntry.TAG) { "Hooked constructor: $executable" }
 
-                val memoryAddresses = try {
-                    Hooks.hook(
-                        executable, Hooks.EntryPointType.DIRECT,
-                        element.impl, Hooks.EntryPointType.DIRECT
-                    )
-                } catch (e: Throwable) {
-                    logE(ZygoteEntry.TAG, e) {
-                        "Hook $clazz -> ${element.methodName}(${element.argumentCount}) crashed!"
+                val memoryAddresses =
+                    try {
+                        Hooks.hook(
+                            executable,
+                            Hooks.EntryPointType.DIRECT,
+                            element.impl,
+                            Hooks.EntryPointType.DIRECT,
+                        )
+                    } catch (e: Throwable) {
+                        logE(ZygoteEntry.TAG, e) {
+                            "Hook $clazz -> ${element.methodName}(${element.argumentCount}) crashed!"
+                        }
+
+                        hooksWasCrashed = true
+
+                        return false
                     }
-
-                    hooksWasCrashed = true
-
-                    return false
-                }
 
                 logV(ZygoteEntry.TAG) { "Memory address map: $memoryAddresses" }
 
@@ -197,18 +212,18 @@ class BulkHooker {
 
             ArtMethodUtils.setExecutableEntryPoint(
                 element.method!!,
-                element.memoryAddresses?.second!!
+                element.memoryAddresses?.second!!,
             )
 
             val thisObject = frame.getArgument(0)
             val args = frame.dumpArgs(true)
 
-            // TODO: DO NOT USE ... as Constructor<*>, IT BREAKS TANGO!!!
+            // The concrete type is what is passed: a Constructor<*> here breaks Tango.
             value.result = (element.method as Method).invoke(thisObject, *args)
 
             ArtMethodUtils.setExecutableEntryPoint(
                 element.method!!,
-                element.memoryAddresses?.first!!
+                element.memoryAddresses?.first!!,
             )
         } else {
             Transformers.invokeExactNoChecks(original, frame)
@@ -222,12 +237,13 @@ class BulkHooker {
         loader: ClassLoader? = SystemServerHook.classLoader,
     ): Executable? {
         for (clazz in clazzNames) {
-            var curClazz = try {
-                Class.forName(clazz, true, loader)
-            } catch (ex: ClassNotFoundException) {
-                logE(ZygoteEntry.TAG, ex) { "Class $clazz not found" }
-                continue
-            }
+            var curClazz =
+                try {
+                    Class.forName(clazz, true, loader)
+                } catch (ex: ClassNotFoundException) {
+                    logE(ZygoteEntry.TAG, ex) { "Class $clazz not found" }
+                    continue
+                }
 
             var methods = listOf<Executable>()
             while (
@@ -235,9 +251,10 @@ class BulkHooker {
                 curClazz != null &&
                 curClazz.javaClass.simpleName != "Object"
             ) {
-                methods = methodNames.mapNotNull {
-                    resolveExecutable(curClazz, it, argumentCount)
-                }
+                methods =
+                    methodNames.mapNotNull {
+                        resolveExecutable(curClazz, it, argumentCount)
+                    }
                 curClazz = curClazz.superclass
             }
 
@@ -255,27 +272,32 @@ class BulkHooker {
         val isConstructorHook = methodName == CONSTRUCTOR_METHOD_NAME
 
         return if (isConstructorHook) {
-            Reflection.getHiddenConstructors(clazz).let { constructors ->
-                if (argumentCount >= 0) {
-                    constructors.filter {
-                        argumentCount == it.parameterCount
-                    }.toTypedArray()
-                } else {
-                    constructors
-                }
-            }.firstOrNull()
-        } else {
-            Reflection.getHiddenExecutables(clazz).filter { executable ->
-                if (methodName == executable.name) {
+            Reflection
+                .getHiddenConstructors(clazz)
+                .let { constructors ->
                     if (argumentCount >= 0) {
-                        return@filter argumentCount == executable.parameterCount
+                        constructors
+                            .filter {
+                                argumentCount == it.parameterCount
+                            }.toTypedArray()
+                    } else {
+                        constructors
+                    }
+                }.firstOrNull()
+        } else {
+            Reflection
+                .getHiddenExecutables(clazz)
+                .filter { executable ->
+                    if (methodName == executable.name) {
+                        if (argumentCount >= 0) {
+                            return@filter argumentCount == executable.parameterCount
+                        }
+
+                        return@filter true
                     }
 
-                    return@filter true
-                }
-
-                return@filter false
-            }.firstOrNull()
+                    return@filter false
+                }.firstOrNull()
         }
     }
 }

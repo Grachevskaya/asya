@@ -9,37 +9,28 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Chronometer
 import android.widget.ImageView
-import android.widget.LinearLayout
 import androidx.annotation.AttrRes
-import androidx.annotation.DrawableRes
-import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.card.MaterialCardView
-import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.shape.CornerFamily
-import com.google.android.material.shape.ShapeAppearanceModel
 import dev.androidbroadcast.vbpd.viewBinding
 import io.github.grachevskaya.asya.BuildConfig
 import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.Constants.MANAGER_WORK_MODE_CRASHED
-import io.github.grachevskaya.asya.common.Constants.MANAGER_WORK_MODE_LOADING
 import io.github.grachevskaya.asya.common.Constants.MANAGER_WORK_MODE_NO_HOOKS
 import io.github.grachevskaya.asya.common.Constants.MANAGER_WORK_MODE_UNKNOWN
 import io.github.grachevskaya.asya.databinding.FragmentHomeBinding
 import io.github.grachevskaya.asya.databinding.ViewHalfCardBinding
-import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.StatusRefresh
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.themeColor
-import io.github.grachevskaya.asya.ui.util.ThemeUtils.cornerSize
 import io.github.grachevskaya.asya.ui.util.dpToPx
-import io.github.grachevskaya.asya.ui.util.navigate
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 import io.github.grachevskaya.asya.ui.util.setupToolbar
 import io.github.grachevskaya.asya.ui.util.showToast
+import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import kotlinx.coroutines.launch
 import kotlin.concurrent.thread
 
@@ -134,7 +125,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     .show()
             }
         }
-
     }
 
     private fun styleSegmentedRows(rows: List<MaterialCardView>) = rows.styleSegmentedCards(requireContext())

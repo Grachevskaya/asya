@@ -84,7 +84,7 @@ public final class HostProcess {
 
     /**
      * The manager's own application, on the host's context. The framework never starts it here --
-     * there is no app of ours -- and everything the manager reaches for hangs off it: its
+     * there is no app of this module -- and everything the manager reaches for hangs off it: its
      * preferences, its configuration, its locale.
      */
     private static void startManagerApplication(ActivityThread thread, ManagerApk apk) {
@@ -112,7 +112,7 @@ public final class HostProcess {
              * The way in, for a host that is already running: a broadcast, answered here, by this
              * code -- which then shows the manager itself. The action script sends this first and only
              * falls back to starting the host's own activity when nothing is running to hear it, so
-             * the host's screen no longer appears on the way to the manager.
+             * the host's screen stays out of the way to the manager.
              */
             registerManagerReceiver(thread);
 
@@ -354,12 +354,14 @@ public final class HostProcess {
      * home screen without any of the host's screen appearing first. The intent it carries is the one
      * the receiver above answers -- so tapping it shows the manager and nothing else.
      */
+
     /**
      * The manager's own icon, as a bitmap.
      *
      * Looked up by name in the apk's resources rather than through a generated R class: the module is
      * not the apk, so it has no ids to point at, and getIdentifier is the way across.
      */
+
     /**
      * Any activity of the host, by name.
      *
@@ -367,6 +369,7 @@ public final class HostProcess {
      * and this only needs one of them -- the module replaces it in newActivity before it can draw. The
      * first enabled one the package manager lists is as good as any other.
      */
+
     /**
      * What the manager says it is, instead of the borrowed activity own answer.
      *

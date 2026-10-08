@@ -11,7 +11,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.clearFragmentResultListener
 import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.setFragmentResultListener
-import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
@@ -24,9 +23,9 @@ import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.ui.util.navController
 import io.github.grachevskaya.asya.ui.util.navigate
 import io.github.grachevskaya.asya.ui.util.registerOnBackCallback
-import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import io.github.grachevskaya.asya.ui.util.setEdge2EdgeFlags
 import io.github.grachevskaya.asya.ui.util.setupToolbar
+import io.github.grachevskaya.asya.ui.util.styleSegmentedCards
 import io.github.grachevskaya.asya.ui.viewmodel.TemplateSettingsViewModel
 import kotlinx.coroutines.launch
 
@@ -51,8 +50,7 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
                 MaterialAlertDialogBuilder(
                     requireContext(),
                     R.style.ThemeOverlay_MaterialAlertDialog_Centered_FullWidthButtons,
-                )
-                    .setIcon(if (delete) R.drawable.outline_delete_24 else R.drawable.outline_info_24)
+                ).setIcon(if (delete) R.drawable.outline_delete_24 else R.drawable.outline_info_24)
                     .setTitle(if (delete) R.string.template_delete_title else R.string.template_name_invalid)
                     .setMessage(if (delete) R.string.template_delete else R.string.template_name_already_exist)
                     .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -76,7 +74,7 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
 
         // The size is animated in sp rather than through an ObjectAnimator: its getter reads the
         // size in pixels, so a first frame taken from it would set the name to that many sp.
-        val from = binding.templateName.textSize / resources.displayMetrics.scaledDensity
+        val from = binding.templateName.textSize / resources.displayMetrics.density / resources.configuration.fontScale
         ValueAnimator.ofFloat(from, if (writing) NAME_WRITING else NAME_READING).apply {
             this.duration = duration
             interpolator = easing
@@ -106,7 +104,7 @@ class TemplateSettingsFragment : Fragment(R.layout.fragment_template_settings) {
         binding.templateName.requestFocus()
         binding.templateName.setSelection(binding.templateName.text?.length ?: 0)
         val ime = requireContext().getSystemService(InputMethodManager::class.java)
-        ime?.showSoftInput(binding.templateName, InputMethodManager.SHOW_IMPLICIT)
+        ime?.showSoftInput(binding.templateName, 0)
     }
 
     private fun hideKeyboard() {

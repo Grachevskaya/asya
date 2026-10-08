@@ -1,7 +1,6 @@
 package io.github.grachevskaya.asya.ui.fragment
 
 import android.annotation.SuppressLint
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -23,10 +22,8 @@ import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dev.androidbroadcast.vbpd.viewBinding
-import io.github.grachevskaya.asya.BuildConfig
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
-import io.github.grachevskaya.asya.common.Constants
 import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.OSUtils
 import io.github.grachevskaya.asya.data.AppConstants
@@ -447,7 +444,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
 
                             list.addView(row)
                             box
-
                         }
                     dialog.setView(container)
                     dialog.setPositiveButton(android.R.string.ok) { _, _ ->

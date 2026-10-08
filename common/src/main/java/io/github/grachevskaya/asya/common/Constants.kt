@@ -15,8 +15,6 @@ object Constants {
     val gmsPackages = arrayOf(GMS_PACKAGE_NAME, GSF_PACKAGE_NAME)
     val riskyPackages = arrayOf(VENDING_PACKAGE_NAME) + gmsPackages
 
-
-
     const val MANAGER_WORK_MODE_UNKNOWN = 0
     const val MANAGER_WORK_MODE_OK = 1
     const val MANAGER_WORK_MODE_NO_HOOKS = 2

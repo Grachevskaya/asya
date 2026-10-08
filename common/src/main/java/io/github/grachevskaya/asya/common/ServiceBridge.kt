@@ -26,8 +26,7 @@ import android.os.Parcel
  * install, where the service is not running at all.
  */
 object ServiceBridge {
-
-    /** Ours on both objects, so the range is ours too: well clear of any AIDL's own codes. */
+    /** This module owns both objects, and the range with them: well clear of any AIDL's own codes. */
     private const val CODE_HELLO = 0x00A50001
     private const val CODE_PACKAGES_CHANGED = 0x00A50002
     private const val CODE_KERNEL_STATUS = 0x00A50011
@@ -62,8 +61,15 @@ object ServiceBridge {
     var onServiceEvent: (() -> Unit)? = null
 
     /** The service's end, written into the handshake and called by the manager afterwards. */
-    class ServiceBinder(private val service: Host) : Binder() {
-        override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+    class ServiceBinder(
+        private val service: Host,
+    ) : Binder() {
+        override fun onTransact(
+            code: Int,
+            data: Parcel,
+            reply: Parcel?,
+            flags: Int,
+        ): Boolean {
             if (reply == null) return super.onTransact(code, data, reply, flags)
 
             when (code) {
@@ -96,7 +102,12 @@ object ServiceBridge {
      * them where they arrive means a platform that adds one cannot turn the carrier into a crash.
      */
     class ManagerBinder : android.app.IProcessObserver.Stub() {
-        override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+        override fun onTransact(
+            code: Int,
+            data: Parcel,
+            reply: Parcel?,
+            flags: Int,
+        ): Boolean {
             when (code) {
                 CODE_HELLO -> {
                     data.readStrongBinder()?.let { host = ServiceProxy(it) }
@@ -116,15 +127,28 @@ object ServiceBridge {
             return super.onTransact(code, data, reply, flags)
         }
 
-        override fun onForegroundActivitiesChanged(pid: Int, uid: Int, foregroundActivities: Boolean) = Unit
+        override fun onForegroundActivitiesChanged(
+            pid: Int,
+            uid: Int,
+            foregroundActivities: Boolean,
+        ) = Unit
 
-        override fun onForegroundServicesChanged(pid: Int, uid: Int, serviceTypes: Int) = Unit
+        override fun onForegroundServicesChanged(
+            pid: Int,
+            uid: Int,
+            serviceTypes: Int,
+        ) = Unit
 
-        override fun onProcessDied(pid: Int, uid: Int) = Unit
+        override fun onProcessDied(
+            pid: Int,
+            uid: Int,
+        ) = Unit
     }
 
     /** The manager's view of the service's binder. Every call is one transaction and one reply. */
-    private class ServiceProxy(private val binder: IBinder) : Host {
+    private class ServiceProxy(
+        private val binder: IBinder,
+    ) : Host {
         override val isAlive: Boolean get() = runCatching { binder.isBinderAlive }.getOrDefault(false)
 
         override fun kernelStatus(): Map<String, String> {
@@ -165,7 +189,10 @@ object ServiceBridge {
     }
 
     /** Called on the service's side: hand this service's binder to the manager's binder. */
-    fun shakeHands(manager: IBinder, service: Host) {
+    fun shakeHands(
+        manager: IBinder,
+        service: Host,
+    ) {
         runCatching {
             val data = Parcel.obtain()
 

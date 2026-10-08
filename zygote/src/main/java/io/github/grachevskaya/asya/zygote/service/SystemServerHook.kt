@@ -56,10 +56,11 @@ object SystemServerHook {
             logI(TAG) { "Trying to invoke 12+ mode" }
 
             try {
-                val loader = callStaticMethod(
-                    Class.forName(ZYGOTE_INIT_CLASS),
-                    "getOrCreateSystemServerClassLoader"
-                )
+                val loader =
+                    callStaticMethod(
+                        Class.forName(ZYGOTE_INIT_CLASS),
+                        "getOrCreateSystemServerClassLoader",
+                    )
 
                 onSystemServer(loader as? ClassLoader)
 
@@ -72,10 +73,14 @@ object SystemServerHook {
 
         logI(TAG) { "Trying to invoke 11- mode" }
 
-        val method = getDeclaredMethod(
-            Class.forName(RUNTIME_INIT_CLASS), "findStaticMain",
-            String::class.java, Array<String>::class.java, ClassLoader::class.java
-        )
+        val method =
+            getDeclaredMethod(
+                Class.forName(RUNTIME_INIT_CLASS),
+                "findStaticMain",
+                String::class.java,
+                Array<String>::class.java,
+                ClassLoader::class.java,
+            )
 
         Hooks.hook(method, Hooks.EntryPointType.CURRENT, { original, frame ->
             try {

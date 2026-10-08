@@ -1,7 +1,6 @@
 import com.android.ide.common.signing.KeystoreHelper
 import com.v7878.zygisk.gradle.ZygoteLoader
 import java.util.Locale
-import java.util.Properties
 import kotlin.io.path.Path
 
 plugins {
@@ -23,7 +22,7 @@ android {
         getByName("main") {
             java {
                 directories.add(
-                    Path(rootDir.path, "external", "AndroidVMTools", "src", "main", "java").toString()
+                    Path(rootDir.path, "external", "AndroidVMTools", "src", "main", "java").toString(),
                 )
             }
         }
@@ -35,7 +34,6 @@ kotlin {
 }
 
 abstract class CopyManagerAppTask : DefaultTask() {
-
     @get:InputFile
     abstract val managerApk: RegularFileProperty
 
@@ -52,7 +50,6 @@ abstract class CopyManagerAppTask : DefaultTask() {
 }
 
 abstract class GenerateSignInfoTask : DefaultTask() {
-
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
@@ -76,13 +73,14 @@ abstract class GenerateSignInfoTask : DefaultTask() {
 
     @TaskAction
     fun generate() {
-        val certificateInfo = KeystoreHelper.getCertificateInfo(
-            storeType.orNull,
-            storeFile.asFile.orNull,
-            storePassword.orNull,
-            keyPassword.orNull,
-            keyAlias.orNull,
-        )
+        val certificateInfo =
+            KeystoreHelper.getCertificateInfo(
+                storeType.orNull,
+                storeFile.asFile.orNull,
+                storePassword.orNull,
+                keyPassword.orNull,
+                keyAlias.orNull,
+            )
 
         val outSrc = outputDir.get().file("io/github/grachevskaya/asya/zygote/Magic.java").asFile
         outSrc.parentFile.mkdirs()
@@ -96,7 +94,7 @@ abstract class GenerateSignInfoTask : DefaultTask() {
                 appendLine(bytes.joinToString(",") { it.toString() })
                 appendLine("};")
                 appendLine("}")
-            }
+            },
         )
     }
 }
@@ -106,31 +104,34 @@ androidComponents {
         val variantCapped = variant.name.replaceFirstChar { it.titlecase(Locale.ROOT) }
         val variantLowered = variant.name.lowercase(Locale.ROOT)
 
-        val managerApkFile = rootProject.layout.projectDirectory.file(
-            "app/build/outputs/apk/$variantLowered/${rootProject.name}-$appVerName-$variantLowered.apk"
-        )
+        val managerApkFile =
+            rootProject.layout.projectDirectory.file(
+                "app/build/outputs/apk/$variantLowered/${rootProject.name}-$appVerName-$variantLowered.apk",
+            )
 
-        val copyManagerApp = tasks.register<CopyManagerAppTask>("copy${variantCapped}ManagerApp") {
-            description = "Copies the manager APK into the $variantLowered module assets"
+        val copyManagerApp =
+            tasks.register<CopyManagerAppTask>("copy${variantCapped}ManagerApp") {
+                description = "Copies the manager APK into the $variantLowered module assets"
 
-            dependsOn(":app:assemble$variantCapped")
-            managerApk.set(managerApkFile)
-        }
+                dependsOn(":app:assemble$variantCapped")
+                managerApk.set(managerApkFile)
+            }
         variant.sources.assets?.addGeneratedSourceDirectory(
             copyManagerApp,
             CopyManagerAppTask::outputDir,
         )
 
         val sign = android.buildTypes[variantLowered].signingConfig
-        val generateSignInfo = tasks.register<GenerateSignInfoTask>("generate${variantCapped}SignInfo") {
-            description = "Generates the signature info used to verify the manager APK"
+        val generateSignInfo =
+            tasks.register<GenerateSignInfoTask>("generate${variantCapped}SignInfo") {
+                description = "Generates the signature info used to verify the manager APK"
 
-            storeType.set(sign?.storeType)
-            storeFile.set(sign?.storeFile)
-            storePassword.set(sign?.storePassword)
-            keyAlias.set(sign?.keyAlias)
-            keyPassword.set(sign?.keyPassword)
-        }
+                storeType.set(sign?.storeType)
+                storeFile.set(sign?.storeFile)
+                storePassword.set(sign?.storePassword)
+                keyAlias.set(sign?.keyAlias)
+                keyPassword.set(sign?.keyPassword)
+            }
         variant.sources.java?.addGeneratedSourceDirectory(
             generateSignInfo,
             GenerateSignInfoTask::outputDir,

@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.agp.lib) apply false
     alias(libs.plugins.nav.safeargs.kotlin) apply false
     alias(libs.plugins.com.github.aerathstuff.zygoteloader) apply false
+    alias(libs.plugins.ktlint) apply false
 }
 
 fun String.execute(currentWorkingDir: File = file("./")): String {
@@ -213,3 +214,13 @@ subprojects {
         configureBaseExtension()
     }
 }
+
+/*
+ * ktlint reads .editorconfig, which is where this tree states the style it is written in and the
+ * two rules it turns off. Every module is checked, and a finding fails the build: the tree is
+ * clean, and what is checked is what stays clean.
+ */
+subprojects {
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
+}
+

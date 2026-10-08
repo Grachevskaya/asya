@@ -16,7 +16,7 @@ import java.lang.reflect.Method;
 /**
  * The manager apk, as the host process sees it.
  *
- * There is no app of ours installed, so nothing has parsed this apk: a class loader is put over
+ * No app of this module is installed, so nothing has parsed this apk: a class loader is put over
  * it, an AssetManager gets its path added, and a Resources is built on top of that with the
  * system's own measurement and configuration. From there the activity class and the constructor
  * that takes (Application, Resources, ComponentName) -- the one written to be hosted -- are what
@@ -63,6 +63,7 @@ public final class ManagerApk {
      * where a system process can read it, and that copy is what is loaded. Sui does the same
      * thing, from its /data/system/sui/sui.apk.
      */
+
     /**
      * The apk, as the descriptor the bridge handed over -- Sui's way of getting at it, and the
      * reason no policy rule about files is needed. One path, no fallback.

@@ -4,7 +4,6 @@ import android.os.Build
 import android.util.Log
 import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.common.CollectionUtils.removeIfWithCount
-import io.github.grachevskaya.asya.common.CollectionUtils.sync
 import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.PropertyUtils
 import io.github.grachevskaya.asya.service.ServiceClient.log

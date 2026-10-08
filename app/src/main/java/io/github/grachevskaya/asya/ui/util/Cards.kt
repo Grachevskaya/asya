@@ -44,16 +44,18 @@ fun ViewGroup.rowCards(): List<MaterialCardView> {
 fun ViewGroup.styleSegmentedCards(context: Context) = rowCards().styleSegmentedCards(context)
 
 fun List<MaterialCardView>.styleSegmentedCards(context: Context) {
-    val largeRadius = context.cornerSize(
-        com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge,
-        com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge,
-        28,
-    )
-    val smallRadius = context.cornerSize(
-        com.google.android.material.R.attr.shapeAppearanceCornerExtraSmall,
-        com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraSmall,
-        4,
-    )
+    val largeRadius =
+        context.cornerSize(
+            com.google.android.material.R.attr.shapeAppearanceCornerExtraLarge,
+            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraLarge,
+            28,
+        )
+    val smallRadius =
+        context.cornerSize(
+            com.google.android.material.R.attr.shapeAppearanceCornerExtraSmall,
+            com.google.android.material.R.style.ShapeAppearance_Material3_Corner_ExtraSmall,
+            4,
+        )
     val gap = (ROW_GAP_DP * context.resources.displayMetrics.density).toInt()
 
     forEachIndexed { index, card ->

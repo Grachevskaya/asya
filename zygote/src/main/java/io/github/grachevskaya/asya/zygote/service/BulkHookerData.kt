@@ -4,7 +4,9 @@ import android.util.Pair
 import com.v7878.vmtools.HookTransformer
 import java.lang.reflect.Executable
 
-class ReturnValue(initialValue: Any? = null) {
+class ReturnValue(
+    initialValue: Any? = null,
+) {
     var replace: Boolean = false
         private set
 

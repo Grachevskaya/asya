@@ -1,16 +1,10 @@
 package io.github.grachevskaya.asya.zygote.service
 
-import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageManager
 import android.os.Build
-import android.os.Bundle
 import android.os.FileObserver
 import android.os.IBinder
-import android.os.ParcelFileDescriptor
-import android.os.RemoteException
-import android.provider.Settings
 import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.common.CollectionUtils.removeIf
 import io.github.grachevskaya.asya.common.Constants
@@ -19,7 +13,6 @@ import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.RiskyPackageUtils
 import io.github.grachevskaya.asya.common.Utils.binderLocalScope
 import io.github.grachevskaya.asya.common.Utils.cleanRemnantsFromConfig
-import io.github.grachevskaya.asya.common.Utils.conflictedModules
 import io.github.grachevskaya.asya.common.Utils.encoder
 import io.github.grachevskaya.asya.common.Utils.generateRandomString
 import io.github.grachevskaya.asya.common.Utils.getInstalledApplicationsCompat
@@ -39,6 +32,7 @@ import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget34
 import io.github.grachevskaya.asya.zygote.hook.ShutdownHook
 import io.github.grachevskaya.asya.zygote.hook.UserChangeHook
 import io.github.grachevskaya.asya.zygote.hook.ZygoteHook
+import io.github.grachevskaya.asya.zygote.util.ActivityManagerUtils
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getDefaultBrowser
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getWebviewProvider
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
@@ -49,10 +43,7 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logWithLevel
 import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.isConflictingModuleInstalled
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.ensureFileIsRW
 import io.github.grachevskaya.asya.zygote.util.UserManagerUtils
-import io.github.grachevskaya.asya.zygote.util.ActivityManagerUtils
 import java.io.File
-import java.io.FileOutputStream
-import java.lang.reflect.Modifier
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicInteger
@@ -88,8 +79,10 @@ class AsyaService(
      */
     private fun announcePackagesChanged() {
         val binder = managerBinder ?: return
-        runCatching { io.github.grachevskaya.asya.common.ServiceBridge.notifyPackagesChanged(binder) }
-            .onFailure { logW(TAG) { "Could not announce the package change: $it" } }
+        runCatching {
+            io.github.grachevskaya.asya.common.ServiceBridge
+                .notifyPackagesChanged(binder)
+        }.onFailure { logW(TAG) { "Could not announce the package change: $it" } }
     }
 
     /** The manager's binder, from the handshake: the one way into its process from here. */
@@ -130,6 +123,7 @@ class AsyaService(
          * from an older layout is not this module's to keep, and adopting it would leave the
          * manager unable to find the directory it is supposed to read.
          */
+
         /**
          * The host's own private directory, and the name this module keeps inside it. Nothing
          * enumerates here: no service to find, no package to list.
@@ -248,12 +242,7 @@ class AsyaService(
                     logI(TAG) { "Made the state directory: $path" }
                 }
 
-        if (dir == null) {
-            logE(TAG) { "The host has not made \$HOST_DATA_ROOT/\$DIR_PREFIX* yet" }
-            dataDir = File(root, DIR_PREFIX + "pending").path
-        } else {
-            dataDir = dir.path
-        }
+        dataDir = dir.path
 
         val logDir = File(dataDir, "log")
         if (!logDir.isDirectory) logDir.mkdirs()
@@ -301,6 +290,7 @@ class AsyaService(
      * hand its binder to, so it also publishes itself under a name. The api, the configuration and
      * the file are the same either way; only the handshake is different.
      */
+
     /**
      * The manager and this service are not in the same process -- one shows inside a host app,
      * the other is in system_server -- and the manager does not ask this service to do anything:
@@ -322,6 +312,7 @@ class AsyaService(
      * thread, because it is socket work, and best effort: a kernel half that is not there, or one
      * that refuses the upload, leaves the hiding exactly as it was, in this service.
      */
+
     /*
      * One rebuild at a time: the kernel keeps its stream state once, not per caller, so two passes
      * at the same time interleave their records. A request that arrives while one runs sets a flag
@@ -417,6 +408,7 @@ class AsyaService(
      * has. Whatever this service would hide, it says here, and the kernel half answers the same
      * question in the place the lookup is made.
      */
+
     /**
      * The base.apk of every app the rules name, which is what the kernel watches.
      *
@@ -545,6 +537,7 @@ class AsyaService(
          * attribute", API 37 and later). When the parsed model cannot be read at all, an app
          * that declares a native library name still counts as native -- the conservative side.
          */
+
         /*
          * Native if either source says so. The flags are authoritative when the model can be
          * read, but on this device they said no for every app (native=0) while applications
@@ -596,16 +589,20 @@ class AsyaService(
                         cls.methods
                             .map { it.name }
                             .filter {
-                                it.contains("ropert", true) || it.contains("ative", true) ||
-                                    it.contains("ervice", true) || it.contains("ygote", true)
+                                it.contains("ropert", true) ||
+                                    it.contains("ative", true) ||
+                                    it.contains("ervice", true) ||
+                                    it.contains("ygote", true)
                             }.sorted()
                             .take(40)
                     val fields =
                         cls.declaredFields
                             .map { it.name }
                             .filter {
-                                it.contains("ropert", true) || it.contains("ative", true) ||
-                                    it.contains("ervice", true) || it.contains("ygote", true)
+                                it.contains("ropert", true) ||
+                                    it.contains("ative", true) ||
+                                    it.contains("ervice", true) ||
+                                    it.contains("ygote", true)
                             }.sorted()
                             .take(40)
                     logI(TAG) {
@@ -647,7 +644,7 @@ class AsyaService(
                 var cls: Class<*>? = androidPackage.javaClass
                 var services: Any? = null
                 while (cls != null && services == null) {
-                    services = runCatching { cls!!.getMethod("getServices").invoke(androidPackage) }.getOrNull()
+                    services = runCatching { cls.getMethod("getServices").invoke(androidPackage) }.getOrNull()
                     cls = cls.superclass
                 }
                 (services as? Collection<*>)?.forEach { service ->
@@ -680,6 +677,7 @@ class AsyaService(
      *
      *
      */
+
     /**
      *
      */
@@ -740,7 +738,7 @@ class AsyaService(
             var services: Any? = null
             cls = pkg.javaClass
             while (cls != null && services == null) {
-                services = runCatching { cls!!.getMethod("getServices").invoke(pkg) }.getOrNull()
+                services = runCatching { cls.getMethod("getServices").invoke(pkg) }.getOrNull()
                 cls = cls.superclass
             }
             (services as? Collection<*>)?.forEach { component ->
@@ -834,7 +832,7 @@ class AsyaService(
 
         for (userId in UserManagerUtils.getUsers(false, false, false).map { it.id }.distinct()) {
             runCatching {
-                val apps = pms.getInstalledApplicationsCompat(0L, userId) ?: return@runCatching
+                val apps = pms.getInstalledApplicationsCompat(0L, userId)
 
                 for (app in apps) {
                     /*
@@ -865,6 +863,7 @@ class AsyaService(
                      *
                      *
                      */
+
                     /*
                      *
                      *
@@ -893,7 +892,7 @@ class AsyaService(
                         val existing =
                             closure
                                 ?.mapNotNull { n ->
-                                    base?.let { File(it, n) }?.takeIf { f -> f.isFile }?.absolutePath
+                                    base.let { File(it, n) }.takeIf { f -> f.isFile }?.absolutePath
                                 }.orEmpty()
                         val paths =
                             if (existing.isNotEmpty()) {
@@ -920,7 +919,7 @@ class AsyaService(
         var targets = 0
 
         for (userId in UserManagerUtils.getUsers(false, false, false).map { it.id }.distinct()) {
-            val packages = pms.getInstalledApplicationsCompat(0L, userId) ?: continue
+            val packages = pms.getInstalledApplicationsCompat(0L, userId)
 
             for (app in packages) {
                 targets++
@@ -929,6 +928,7 @@ class AsyaService(
                 for (caller in callerPackages) {
                     if (!shouldHide(caller, target, userId)) continue
 
+                    //noinspection NewApi
                     val callerUid = pms.getPackageUid(caller, 0L, userId)
                     val targetUid = app.uid
                     if (callerUid < 0 || targetUid <= 0) continue
@@ -1021,7 +1021,7 @@ class AsyaService(
 
         val observer =
             object : FileObserver(
-                dir.absolutePath,
+                dir,
                 CREATE or MOVED_TO or CLOSE_WRITE or DELETE or ATTRIB,
             ) {
                 override fun onEvent(
@@ -1138,7 +1138,6 @@ class AsyaService(
 
         // The bridge: the host's process observer registration is what carries it across.
         frameworkHooks.add(BridgeHook())
-
 
         frameworkHooks.forEach(IFrameworkHook::load)
         logI(TAG) { "Hooks installed" }
@@ -1307,8 +1306,13 @@ class AsyaService(
                     return
                 }
                 config = newConfig
-                ensureFileIsRW(configFile, true)
-                configFile.writeText(json)
+
+                // Written beside the file and moved onto it: a stop between the two leaves the old
+                // config whole, and the watcher sees one MOVED_TO rather than a half written file.
+                val pending = File(configFile.parentFile, configFile.name + ".new")
+                ensureFileIsRW(pending, true)
+                pending.writeText(json)
+                Files.move(pending.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
                 dataHolder.clearUidCache()
 
                 // remove filter counts for apps if they are not in config
