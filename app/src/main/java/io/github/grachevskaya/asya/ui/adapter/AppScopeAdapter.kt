@@ -5,9 +5,8 @@ import io.github.grachevskaya.asya.ui.view.AppItemView
 
 class AppScopeAdapter(
     private val checked: MutableSet<String>,
-    hideMyself: Boolean,
     firstFilter: ((String) -> Boolean)?,
-) : AppSelectAdapter(hideMyself, firstFilter) {
+) : AppSelectAdapter(firstFilter) {
     private inline var String.isChecked
         get() = checked.contains(this)
         set(value) {

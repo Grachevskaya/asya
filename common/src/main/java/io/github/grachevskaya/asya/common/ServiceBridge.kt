@@ -5,28 +5,19 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.Parcel
 
-/**
- * The channel between the service and the manager.
+/*
+ * The channel between the service and the manager, which run in different processes.
  *
- * The two halves are not in one process: the service is created in system_server, where the package
- * manager and the transaction hooks are (SystemServerHook -> UserService.register), and the
- * manager's Activity is loaded into the host, com.android.systemui. A static is per process, so what
- * they need is a binder -- and a way to exchange one that nothing else can see.
+ * The handshake rides on an ordinary process-observer registration: the manager registers an object
+ * that answers this module's codes, the service's hook recognises it by uid and by its interface
+ * descriptor, and the service answers on that same object with a binder of its own. The manager then
+ * hands over a plain binder of its own, and every later message goes there.
  *
- * The way is an ordinary registration. The host registers a process observer with the framework,
- * which is something a system process is entitled to do and which says nothing about this module;
- * the service holds a hook on the accepting method, recognises the host by uid, keeps the object it
- * was handed and answers *on that same object* with a binder of its own, under a transaction code
- * the object's own interface never uses. No service name, no broadcast and no new interface has to
- * exist for the handshake, and nothing enumerable is added to the system.
- *
- * From then on it is two binders and nothing else: the manager asks the service for live values
- * instead of reading the files it writes, and the service tells the manager when a package
- * transaction is over. The files stay as the fallback for a process with no binder -- a plain
- * install, where the service is not running at all.
+ * A code sent to a framework object must stay outside 1..IBinder.LAST_CALL_TRANSACTION: a code inside
+ * that range is taken for a framework call, the interface token is demanded, and the transaction is
+ * refused. The framework object the host registers can therefore never carry this module's traffic.
  */
 object ServiceBridge {
-    /** This module owns both objects, and the range with them: well clear of any AIDL's own codes. */
     internal const val CODE_HELLO = 0x00A50001
     internal const val CODE_PACKAGES_CHANGED = 0x00A50002
     internal const val CODE_MODULE_STATUS = 0x00A50010
@@ -34,13 +25,7 @@ object ServiceBridge {
     /** The configuration, written by the manager: the one message that is a whole document. */
     internal const val CODE_CONFIG_SET = 0x00A50018
 
-    /**
-     * Log lines, batched on the way up.
-     *
-     * The service keeps its log in memory and hands whole batches over, because an application
-     * cannot read another process's logcat and a transaction per line would be one binder call per
-     * package query. The manager is the side that owns a file, so it appends what arrives.
-     */
+    /** Log lines, batched: one transaction per batch, never one per line. */
     internal const val CODE_LOG_LINES = 0x00A50019
 
     /** Increments of the filter counts, so the manager accumulates them itself. */
@@ -49,26 +34,13 @@ object ServiceBridge {
     /** A reset the manager asks for: the ledger the service still holds is emptied with it. */
     internal const val CODE_FILTER_CLEAR = 0x00A5001C
 
-    /**
-     * The manager's own binder, sent up so that this module can call into its process. The object the
-     * host registers with the framework carries a framework interface and refuses a transaction of
-     * ours; this one is a plain binder of this module and answers them.
-     */
+    /** The manager's own binder: the object it registers with the framework refuses our codes. */
     internal const val CODE_MANAGER_BINDER = 0x00A5001D
 
-    /**
-     * The configuration this side changed on its own -- a package that has just been installed gets
-     * its default -- so the manager, which keeps the file, hears about it.
-     */
+    /** A configuration this side changed itself, sent so the manager can keep the file. */
     internal const val CODE_CONFIG_CHANGED = 0x00A5001B
 
-    /**
-     * How many lines travel in one batch, and how long the oldest of them waits to be sent.
-     *
-     * A batch is sent when it is full, or when the flush period since the first line has passed,
-     * or at once when a line at WARN or above arrives: a batch is small enough to stay in the parcel
-     * and rare enough that the cost of the channel is not the cost of logging.
-     */
+    /** How many lines travel in one batch, and how long the oldest waits for company. */
     const val LOG_BATCH_LINES = 32
 
     const val LOG_FLUSH_PERIOD_MS = 250L
@@ -77,20 +49,13 @@ object ServiceBridge {
     internal const val PAYLOAD_BUNDLE = 0
     internal const val PAYLOAD_SHARED_MEMORY = 1
 
-    /** Above this the parcel is left alone and the bytes go through shared memory. */
     /**
-     * Above this the parcel is left alone and the bytes go through shared memory.
-     *
-     * The threshold is close to what a transaction can carry on purpose: the shared memory path is
-     * the one whose mapping the platform releases only when the object is finalized, which is not a
-     * guarantee, so it is kept for documents that a parcel really cannot hold.
+     * Above this the bytes go through shared memory. The threshold is close to what a transaction can
+     * carry on purpose: the shared-memory mapping is released only on finalization, so it is kept for
+     * documents a parcel cannot hold.
      */
     internal const val PARCEL_LIMIT = 256 * 1024
 
-    /**
-     * How a payload of this many bytes travels. It is a function of the size and nothing else, so
-     * the boundary the two ends have to agree on can be checked without a device.
-     */
     internal fun payloadKind(size: Int): Int = if (size <= PARCEL_LIMIT) PAYLOAD_BUNDLE else PAYLOAD_SHARED_MEMORY
 
     internal const val CODE_KERNEL_STATUS = 0x00A50011
@@ -98,7 +63,6 @@ object ServiceBridge {
     internal const val CODE_FILTER_COUNT = 0x00A50013
     internal const val CODE_FILTER_STATS = 0x00A50014
 
-    /** What an incoming transaction code means to the end that received it. */
     /** The name the manager's object answers to, which no framework observer shares. */
     const val DESCRIPTOR_OF_OURS = "asya.bridge.manager"
 
@@ -164,14 +128,7 @@ object ServiceBridge {
     @Volatile
     var host: Host? = null
 
-    /**
-     * Where the batches of log lines go. The manager installs this: it is the side with a file, and
-     * the service keeps nothing but the lines still waiting for a batch.
-     */
-    /**
-     * Where a batch of log lines goes. It arrives as one document: every line already ends with its
-     * own newline, so what is appended verbatim is the log, and nothing is split and rejoined.
-     */
+    /** Where a batch of log lines goes: one document, appended verbatim. */
     @Volatile
     var logSink: ((String) -> Unit)? = null
 
@@ -202,11 +159,13 @@ object ServiceBridge {
     private var managerRegistered = false
 
     /**
-     * Puts the bridge in place from the manager’s side.
+     * Puts the bridge in place from the manager's side.
      *
-     * Whether the host process registers an observer of its own, and when, is the host’s business
-     * rather than this module’s. This module registers its own, which needs no permission, and the
-     * object it registers is the one the service’s handshake is answered by.
+     * It is the manager's own copy of these classes that has to run this: the copy that registers is
+     * the copy that answers the handshake, and the service's binder, the sinks and the configuration
+     * all live in that copy's statics. The module calls this in the manager's class loader for that
+     * reason -- see HostBridge -- and this module's own copy is only used where the manager's cannot
+     * be reached at all.
      */
     fun registerManagerObserver() {
         if (managerRegistered) return

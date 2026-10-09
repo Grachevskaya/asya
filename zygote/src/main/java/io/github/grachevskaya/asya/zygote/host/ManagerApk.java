@@ -39,6 +39,9 @@ public final class ManagerApk {
         Constructor<?> activityConstructor = null;
 
         try {
+            // A plain loader, and deliberately: the apk and this module are minified separately, so a
+            // method of a shared class mentions library types each build renamed on its own. What
+            // crosses between the two copies is a binder, which carries no library types at all.
             loader = new PathClassLoader(path, ClassLoader.getSystemClassLoader());
             loaded = loadResources(path, loader);
             activityClass = loader.loadClass(HostConstants.MANAGER_ACTIVITY);
@@ -57,27 +60,18 @@ public final class ManagerApk {
     }
 
     /**
-     * Where the apk is. Not in the module: the host process runs as system_app and cannot read
-     * under /data/adb at all -- a PathClassLoader over a path it cannot open comes up with an
-     * empty DexPathList, which is how this failed the first time. So the installer leaves a copy
-     * where a system process can read it, and that copy is what is loaded. Sui does the same
-     * thing, from its /data/system/sui/sui.apk.
-     */
-
-    /**
-     * The apk, as the descriptor the bridge handed over -- Sui's way of getting at it, and the
-     * reason no policy rule about files is needed. One path, no fallback.
+     * The host cannot read under /data/adb -- a PathClassLoader over a path it cannot open comes up
+     * with an empty DexPathList -- so the installer leaves a copy where a system process can read it,
+     * and that copy is what is loaded.
      */
     private static String managerApkPath() {
         return HostFiles.apkPath();
     }
 
     /**
-     * The resources have to inflate their own drawables, and a drawable that names a class is
-     * looked up through the class loader of the Resources it is being inflated from. A plain
-     * Resources answers with the host's loader, where none of the apk's classes exist -- which is
-     * how "Class not found gradient" ended the manager's activity before it drew anything. This one
-     * answers with the apk's loader.
+     * Drawables that name a class are looked up through the class loader of the Resources they are
+     * inflated from, and a plain Resources answers with the host's loader, where none of the apk's
+     * classes exist. This one answers with the apk's loader.
      */
     private static final class ApkResources extends Resources {
         private final ClassLoader loader;

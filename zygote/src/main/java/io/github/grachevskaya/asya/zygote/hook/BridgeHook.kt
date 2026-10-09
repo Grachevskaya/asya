@@ -8,13 +8,9 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 
-/**
- * The hook that turns the host's own process observer registration into the bridge.
- *
- * The manager registers an observer of its own when it starts; the registration arrives as an
- * ordinary binder call, this hook sits inside the method that accepts it, and the handshake travels
- * back on the very object that was passed in. The caller is checked by uid, so a registration from
- * any other process is left alone.
+/*
+ * Turns the manager's process-observer registration into the bridge: the handshake travels back on the
+ * object that was passed in, and registrations from other processes are left alone.
  */
 class BridgeHook : IFrameworkHook {
     override val TAG = "BridgeHook"
@@ -28,16 +24,12 @@ class BridgeHook : IFrameworkHook {
 
             val binder = observer.asBinder()
 
-            // The host's own observers are registered from the same uid as this module's manager, so the
-            // object itself has to say who it belongs to: only the manager's answers under this name.
+            // The host's own observers come from the same uid, so only the descriptor tells them apart.
             val descriptor = runCatching { binder.interfaceDescriptor }.getOrNull()
             if (descriptor != ServiceBridge.DESCRIPTOR_OF_OURS) return@hookAfter
 
             logI(TAG) { "A registration of this module: " + descriptor }
 
-            // The registration that matters is this module’s own, made by the manager when it starts.
-            // Anything else that lands here belongs to the host and is left alone: it has no handshake
-            // to answer, and treating it as one would be a lie rather than a fallback.
             val answer = runCatching { ServiceBridge.shakeHands(binder, service) }.isSuccess
 
             if (!answer) {

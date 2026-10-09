@@ -96,15 +96,11 @@ val Fragment.contentResolver get(): ContentResolver = requireContext().contentRe
  */
 
 /**
- * The half of a rebuild that has to come first, whatever starts the rebuild: the page to come
- * back to, and the flag that keeps the destroy from being read as a request to force stop the app.
- * A rebuild AppCompat starts on its own -- a language change -- needs both just as much as the one
- * below, and without the flag the app really did stop and start again.
+ * The half of a rebuild that has to come first, whatever starts the rebuild: the page to come back
+ * to. A rebuild AppCompat starts on its own -- a language change -- needs it just as much as the one
+ * below.
  */
 fun Fragment.rememberDestinationForRebuild() {
-    val mainActivity = activity as MainActivity
-    mainActivity.readyToKill = false
-
     MainActivity.pendingDestination = navController.currentDestination?.id ?: 0
     MainActivity.fadeInOnCreate = true
 }

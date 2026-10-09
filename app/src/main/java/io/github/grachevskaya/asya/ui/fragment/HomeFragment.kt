@@ -323,7 +323,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
 
             root.setOnLongClickListener {
-                ServiceClient.reloadConfigFromFile()
+                ServiceClient.repushConfig()
                 showToast(android.R.string.ok)
 
                 true

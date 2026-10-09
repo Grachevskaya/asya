@@ -10,33 +10,19 @@ import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Handler;
 
-/**
- * The way in, in the host process -- what Sui's SettingsProcess and its native side do together.
- *
- * Sui's Java side is called *into* at the moment the application is bound. Ours starts by itself
- * earlier than that -- this entry point runs as the process is specialized, before the framework
- * has built its ActivityThread -- so the first thing that has to happen is waiting for that
- * object to exist. Reading it too early is a null receiver on the handler field, which is exactly
- * what failed before this.
- *
- * Once it exists, a callback goes on its handler, and when the message that binds the application
- * goes by, the process's Instrumentation is replaced with one that answers the manager's launch.
- * Before that there is nothing to replace; at the launch itself is too late.
- *
- * The apk is opened at that same moment, for the same reason Sui builds its SuiApk in
- * postBindApplication: the daemon that holds it is started by the module's boot script, and a
- * process that came up before it would otherwise have nothing to load.
+/*
+ * The way in, in the host process. It runs as the process is specialized, before the framework has
+ * built its ActivityThread, so the first thing it does is wait for that object. When the message that
+ * binds the application goes by, the process's Instrumentation is replaced -- before the launch, since
+ * at the launch it is too late -- and the manager's apk is opened at that same moment.
  */
 public final class HostProcess {
 
     /** The apk the module carries, kept from the moment it was opened. */
     private static ManagerApk managerApk;
 
-    /** The manager's application is made once, and only once the user's storage is readable. */
+    /** The manager's application is made once. */
     private static volatile boolean managerApplicationStarted;
-
-    /** How long to wait for the ActivityThread, at the rate it appears. */
-
     /**
      * Called from the bind hook, with the ActivityThread the framework is binding. Sui's
      * postBindApplication, at the same moment.
@@ -68,25 +54,17 @@ public final class HostProcess {
             ActivityThreadBridge.setInstrumentation(thread, new ManagerInstrumentation(original, apk));
             HostLog.i("Instrumentation replaced in %s", HostConstants.HOST_PACKAGE);
 
-            // The bridge is offered from here: the manager's application is what answers on it, and
-            // this is the moment that application is about to exist.
-            HostBridge.INSTANCE.install();
+            // The manager's own object answers on the bridge, and this is the moment its application
+            // is about to exist.
+            HostBridge.INSTANCE.install(apk.getClassLoader());
 
-            if (isUserUnlocked(thread)) {
-                startManagerApplication(thread, apk);
-            } else {
-                waitForUnlock(thread, apk);
-            }
+            startManagerApplication(thread, apk);
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not replace the instrumentation");
         }
     }
 
-    /**
-     * The manager's own application, on the host's context. The framework never starts it here --
-     * there is no app of this module -- and everything the manager reaches for hangs off it: its
-     * preferences, its configuration, its locale.
-     */
+    /** The manager's own application, on the host's context: the framework never starts it here. */
     private static void startManagerApplication(ActivityThread thread, ManagerApk apk) {
         if (managerApplicationStarted) return;
 
@@ -99,91 +77,138 @@ public final class HostProcess {
 
             appClass.getMethod("onCreate").invoke(application);
 
-            /*
-             * The directory the two halves share is made here, by this side, because this side can:
-             * it is an activity of the host process, and the host's own data directory belongs to it.
-             * The service cannot make it -- creating inside an application's data directory is not
-             * something system_server is allowed to do, which is exactly what "could not be made"
-             * said -- so the side that can, does, and the service only ever writes into it.
-             */
-            HostFiles.prepareStateDirectory();
-
-            /*
-             * The way in, for a host that is already running: a broadcast, answered here, by this
-             * code -- which then shows the manager itself. The action script sends this first and only
-             * falls back to starting the host's own activity when nothing is running to hear it, so
-             * the host's screen stays out of the way to the manager.
-             */
+            // The way in for a host that is already running: the action script sends this, and only
+            // falls back to starting the host's own activity when nothing is running to hear it.
             registerManagerReceiver(thread);
 
             managerApplicationStarted = true;
 
             HostLog.i("The manager's application is up");
+
+            wakeManagerClientOnUnlock(thread, apk);
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not start the manager's application");
         }
     }
 
     /**
-     * Whether the user's own storage is readable yet. This, and not the boot state or the uptime, is
-     * what the manager waits for: its own onCreate reads the host's credential-encrypted files, and
-     * those exist only after the key is in place. The property is the fallback, and it is the one
-     * init sets when user 0's credential-encrypted storage becomes available.
+     * Touches the manager's client once the user's storage is readable, and not before: everything the
+     * client does is a file under that storage, and reading one of those before the key is in place is
+     * what holds the lock screen back. Nothing is waited for on a broadcast here -- a broadcast has to
+     * be delivered to this process's context to arrive at all.
+     */
+    private static void wakeManagerClientOnUnlock(ActivityThread thread, ManagerApk apk) {
+        Thread waker = new Thread(() -> {
+            // What the client needs is not an answer about a user, it is its own files: whether the
+            // manager's own directory can be listed is the ground truth, and the framework's answers
+            // are checked beside it. The first attempts are reported, so a device that never wakes
+            // says why.
+            java.io.File home = null;
+            try {
+                String path = HostFiles.apkPath();
+                if (path != null) home = new java.io.File(path).getParentFile();
+            } catch (Throwable ignored) {
+                // No path to probe; the framework's answers are what is left.
+            }
+
+            HostLog.i("The manager's client waits for the unlock");
+
+            for (int attempt = 0; ; attempt++) {
+                String ce = android.os.SystemProperties.get("sys.user.0.ce_available");
+                Object byUser = "not asked";
+                boolean readable = false;
+
+                try {
+                    Context context = systemContext(thread);
+                    android.os.UserManager users = context.getSystemService(android.os.UserManager.class);
+                    byUser = users == null ? "no UserManager"
+                            : android.os.UserManager.class.getMethod("isUserUnlocked", Integer.TYPE).invoke(users, 0);
+                } catch (Throwable cause) {
+                    byUser = "threw " + cause.getClass().getSimpleName();
+                }
+
+                try {
+                    readable = home != null && home.list() != null;
+                } catch (Throwable cause) {
+                    readable = false;
+                }
+
+                if (attempt < 3) {
+                    HostLog.i("Unlock check: ce=%s, by-user=%s, state dir readable=%s", ce, byUser, readable);
+                }
+
+                if (readable || Boolean.TRUE.equals(byUser) || "1".equals(ce) || "true".equalsIgnoreCase(ce)) break;
+
+                try {
+                    Thread.sleep(500L);
+                } catch (InterruptedException interrupted) {
+                    return;
+                }
+            }
+
+            HostLog.i("The manager's storage is readable; waking the manager's client");
+
+            touchManagerClient(apk);
+        }, "asya-manager-client");
+
+        waker.setDaemon(true);
+        waker.start();
+    }
+
+    /**
+     * Reads the manager's own client object, which is what runs its initialiser: the sink the log
+     * lines are written to, the sink the totals are added into, and the callback the handshake hands
+     * the configuration over on. Nothing else has to be called for any of that to be in place.
+     */
+    private static void touchManagerClient(ManagerApk apk) {
+        try {
+            Class<?> type = apk.getClassLoader()
+                    .loadClass("io.github.grachevskaya.asya.service.ServiceClient");
+
+            Object client = type.getField("INSTANCE").get(null);
+
+            HostLog.i("The manager's client is awake: %s", client != null);
+        } catch (Throwable cause) {
+            HostLog.e(cause, "Could not touch the manager's client");
+        }
+    }
+
+    /**
+     * Whether the user's own storage is readable yet. The property is asked first: it answers about
+     * user 0, while UserManager answers about the user its context belongs to, and the context reached
+     * from here is the SYSTEM one.
      */
     private static boolean isUserUnlocked(ActivityThread thread) {
         try {
             Context context = systemContext(thread);
             android.os.UserManager users = context.getSystemService(android.os.UserManager.class);
-            if (users != null) return users.isUserUnlocked();
+
+            /*
+             * Asked about user 0 by number, and not about "the user this context belongs to": the one
+             * reached from here is the SYSTEM context, and its verdict is about a different user's
+             * storage. Returning that verdict is what kept the manager's client from ever being woken.
+             * That overload is not in the stubs this module compiles against -- it is there at runtime,
+             * which is where this runs -- so it is reached reflectively.
+             */
+            if (users != null) {
+                Object answer = android.os.UserManager.class
+                        .getMethod("isUserUnlocked", Integer.TYPE)
+                        .invoke(users, 0);
+
+                if (Boolean.TRUE.equals(answer)) return true;
+            }
         } catch (Throwable ignored) {
-            // The property below answers instead.
+            // Nothing left to ask but the property below.
         }
 
-        return "1".equals(android.os.SystemProperties.get("sys.user.0.ce_available"));
+        String ce = android.os.SystemProperties.get("sys.user.0.ce_available");
+
+        return "1".equals(ce) || "true".equalsIgnoreCase(ce);
     }
 
     /**
-     * The manager's application is not created before the user's storage is readable.
-     *
-     * Its own onCreate reads the host's credential-encrypted files, and on a locked device that read
-     * is one the boot waits on: this ran at bind time, on the host's main thread, during boot -- the
-     * delay before the lockscreen was this. The instrumentation is replaced either way, because that
-     * has to happen before the first activity of the host is created; only the application waits.
-     */
-    private static void waitForUnlock(ActivityThread thread, ManagerApk apk) {
-        try {
-            Context context = systemContext(thread);
-            HostLog.i("Waiting for the user to be unlocked before the manager's application starts");
-
-            BroadcastReceiver receiver = new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context ctx, Intent intent) {
-                    if (!isUserUnlocked(thread)) return;
-
-                    try {
-                        ctx.unregisterReceiver(this);
-                    } catch (Throwable ignored) {
-                        // Already gone is also fine.
-                    }
-
-                    startManagerApplication(thread, apk);
-                }
-            };
-
-            register(context, receiver, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
-        } catch (Throwable cause) {
-            HostLog.e(cause, "Could not wait for the user to be unlocked");
-        }
-    }
-
-    /**
-     * The host's context with the manager's own resources on it -- the same pair the activity is
-     * built with.
-     *
-     * Everything the manager builds hangs off its application context: its views, its theme, its
-     * strings. On the host's resources a Material string this apk carries is a string the table has
-     * never heard of, and the lookup is a Resources$NotFoundException -- which is what the manager's
-     * own log was showing, from the accessibility pass over a tab.
+     * The host's context with the manager's own resources on it: on the host's resources a string this
+     * apk carries is one the table has never heard of, and the lookup throws.
      */
     private static Context hostedContext(ManagerApk apk, Context host) {
         try {
@@ -207,11 +232,7 @@ public final class HostProcess {
         startManagerApplication(thread, apk);
     }
 
-    /**
-     * The method that takes the base context is declared by ContextWrapper, and whether Application
-     * overrides it depends on the platform: on this one it does not, so it is looked for on the
-     * manager's own class first and then up the chain.
-     */
+    /** attachBaseContext is declared by ContextWrapper on this platform, not by Application. */
     private static java.lang.reflect.Method attachMethod(Class<?> type) throws NoSuchMethodException {
         for (Class<?> c = type; c != null; c = c.getSuperclass()) {
             try {
@@ -226,13 +247,7 @@ public final class HostProcess {
         throw new NoSuchMethodException("attachBaseContext");
     }
 
-    /**
-     * Listens for the action button, and answers it by showing the manager.
-     *
-     * Registered here, in the host process, so that none of the host's own screen takes part: the
-     * broadcast is delivered to this module and this module starts the manager. Only the cold case --
-     * no host running to hear it -- falls back to the shell starting the host's activity.
-     */
+    /** Answers the action button by showing the manager, so no screen of the host takes part. */
     private static void registerManagerReceiver(ActivityThread thread) {
         try {
             Context context = systemContext(thread);
@@ -245,15 +260,8 @@ public final class HostProcess {
                 }
             };
 
-            /*
-             * Two ways in, and they are the same way: this module's own action, and the secret code the dialer
-             * sends for this module -- *#*#2792#*#* -- which the fork this is modelled on uses as its
-             * only entry. The code is broadcast with a data uri, and it gets a filter of its own,
-             * because a filter's data fields apply to every action it carries: put the uri on the
-             * same filter as the plain action and a broadcast that carries no data at all can never
-             * match it -- which is exactly how the action button went unanswered while the receiver
-             * sat there registered, listening for a name nothing was ever going to send with a uri.
-             */
+            // The secret code gets a filter of its own: a filter's data fields apply to every action
+            // it carries, so a broadcast with no data can never match a filter that names a uri.
             register(context, receiver, new IntentFilter(HostConstants.ACTION_SHOW_MANAGER));
 
             IntentFilter code = new IntentFilter();
@@ -271,10 +279,7 @@ public final class HostProcess {
         }
     }
 
-    /**
-     * Registers one of the manager's filters, exported so the broadcast can reach the host from
-     * outside it: the shell and the dialer are both other callers, and neither is the host itself.
-     */
+    /** Exported: the shell and the dialer are other callers, and neither is the host itself. */
     private static void register(Context context, BroadcastReceiver receiver, IntentFilter filter) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
@@ -286,12 +291,8 @@ public final class HostProcess {
     /** Starts the manager's activity in the host's own task, carrying what it checks before showing. */
     private static void showManager(ActivityThread thread, Intent from) {
         try {
-            /*
-             * The user's own storage being readable is the signal, and not an uptime guess: the
-             * manager's application reads the host's credential-encrypted files the moment it is
-             * created, so it is started once that key is in place and not before. A request that
-             * arrives while the device is still locked has nothing to show yet.
-             */
+            // A request that arrives while the device is still locked has nothing to show yet.
+
             if (!isUserUnlocked(thread)) {
                 HostLog.i("Ignoring a manager request: the user is still locked");
                 return;
@@ -299,13 +300,8 @@ public final class HostProcess {
 
             ensureManagerApplication(thread);
 
-            /*
-             * An activity of the host, and one that is looked up rather than named: which activities a
-             * system app has differs from build to build, and this only needs one of them -- the module
-             * replaces it in newActivity before it can draw anything. Starting a service instead, as
-             * this did for a while, brings the process up and does nothing else: no activity is ever
-             * created, and the replacement never runs.
-             */
+            // An activity of the host, looked up rather than named: which ones a system app declares
+            // differs between builds, and the module replaces whichever it is before it draws.
             String activity = anyHostActivity(systemContext(thread));
             if (activity == null) {
                 HostLog.e("The host has no activity to show the manager through");
@@ -316,12 +312,8 @@ public final class HostProcess {
             intent.setClassName(HostConstants.HOST_PACKAGE, activity);
             intent.putExtra(HostConstants.EXTRA, from.getIntExtra(HostConstants.EXTRA, 1));
 
-            /*
-             * The shell knows the token and now sends it; the dialer cannot, because a typed code
-             * carries nothing else. Answering that code from inside the host is proof enough on its
-             * own, so a token that did not travel is filled in from the one both halves share -- the
-             * length the replacement reads as a refusal is what kept the code from ever showing it.
-             */
+            // A typed code carries nothing else, so a token that did not travel is filled in from the
+            // one both halves share.
             String token = from.getStringExtra(HostConstants.EXTRA_TOKEN);
             if (token == null) token = HostFiles.token();
             intent.putExtra(HostConstants.EXTRA_TOKEN, token);
@@ -333,13 +325,7 @@ public final class HostProcess {
         }
     }
 
-    /**
-     * The host's system context.
-     *
-     * ActivityThread.getSystemContext is hidden -- not in the public stubs this module compiles
-     * against -- but it is public on the class at runtime, so it is reached reflectively, the same way
-     * the rest of what the framework does not publish is reached in here.
-     */
+    /** Hidden from the stubs this module compiles against, so it is reached reflectively. */
     private static Context systemContext(ActivityThread thread) throws Exception {
         java.lang.reflect.Method method = thread.getClass().getMethod("getSystemContext");
         method.setAccessible(true);

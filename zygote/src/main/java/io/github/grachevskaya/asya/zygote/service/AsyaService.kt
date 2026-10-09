@@ -68,13 +68,8 @@ class AsyaService(
     }
 
     /**
-     * The manager's notice, and the reason it is a broadcast.
-     *
-     * The manager runs in the host and this service runs in system_server, so a static reference
-     * cannot reach it: what crosses a process boundary here is an intent. It is sent from the
-     * transaction hook and not left to the package broadcast, which can arrive while the apk
-     * directory is still being swapped -- the read the manager then takes is of the transient
-     * state. Addressed at the host and registered-only, so no other app is woken by it.
+     * Sent from the transaction hook rather than left to the package broadcast, which can arrive while
+     * the apk directory is still being swapped.
      */
     private fun announcePackagesChanged() {
         val binder = managerBinder ?: return
@@ -165,7 +160,7 @@ class AsyaService(
         val taken = dataHolder.takeFilterCounts()
         if (taken.totalCount == 0) return
 
-        // The ledger goes back where it came from unless the manager said it took it.
+        // The ledger goes back unless the manager said it took it.
         if (!runCatching { ServiceBridge.notifyFilterDeltas(binder, taken.toString()) }.getOrDefault(false)) {
             dataHolder.mergeFilterCounts(taken)
             logW(TAG) { "The counts were not taken; they wait for the next batch" }
@@ -254,7 +249,11 @@ class AsyaService(
         // kernel hears: a pushed configuration is applied here and nowhere else.
         invalidateConfigCaches()
         pushPolicyToKernel()
-        logI(TAG) { "Config loaded" }
+
+        logI(TAG) {
+            "Config loaded: " + json.length + " chars, " + config.scope.size + " caller(s), " +
+                "detailLog=" + config.detailLog
+        }
     }
 
     private fun installHooks() {
@@ -347,11 +346,8 @@ class AsyaService(
         val appConfig = config.scope[caller] ?: return false
 
         if (config.webViewProtection) {
-            /*
-             * Both answers are the same for every pair in a pass, and both cost a package
-             * manager query: asking per pair is five hundred targets times every caller, twice.
-             * Cached per user, cleared whenever the configuration is reloaded.
-             */
+            // Both answers are the same for every pair in a pass, so they are cached per user and
+            // cleared when the configuration is reloaded.
             val webviewProvider = cachedWebviewProvider()
             if (webviewProvider == caller || webviewProvider == query) return false
 
@@ -420,11 +416,7 @@ class AsyaService(
 
         return true
     }
-    /**
-     * A line the module wants kept. It reaches logcat at once and waits here for company: whole
-     * batches travel to the manager on the bridge, because one transaction per line would cost the
-     * channel more than the logging costs.
-     */
+    /** One line for the next batch: a transaction per line would cost the channel more than logging. */
     fun addLog(
         parsedMsg: String,
         urgent: Boolean = false,
@@ -466,11 +458,7 @@ class AsyaService(
         runCatching { ServiceBridge.notifyLogLines(binder, lines) }
             .onFailure { logW(TAG) { "Could not hand the log lines over: $it" } }
     }
-    /**
-     * The shutdown hook's moment: the increments still waiting are handed over, and the total is said
-     * out loud. Nothing is written here, because nothing on this side is kept between runs.
-     */
-    /** The shutdown hook's moment: whatever is gathered leaves before the process does. */
+    /** Whatever is gathered leaves before the process does. */
     fun flushForShutdown() {
         flushFilterCounts()
 
@@ -491,12 +479,7 @@ class AsyaService(
         announcePackagesChanged()
     }
 
-    /**
-     * The default config, for packages that have just been installed.
-     *
-     * The install transaction is the install event: it is the one that knows what was installed.
-     * A package that already has a config keeps it, and an upgrade is not a new package.
-     */
+    /** For packages that have just been installed; a package that already has a config keeps it. */
     fun applyDefaultConfigTo(packageNames: List<String>) {
         val default = config.defaultConfig ?: return
         if (packageNames.isEmpty()) return
@@ -557,19 +540,5 @@ class AsyaService(
         dataHolder.clearFilterCounts()
     }
 
-    fun reloadConfigFromFile() {
-        invalidatePackageCaches()
 
-        val loading =
-            runCatching {
-                // The configuration arrives over the bridge: this side has no file to read.
-                config
-                return
-            }.getOrElse {
-                logE(TAG, it) { "Failed to parse config.json" }
-                return
-            }
-
-        config = loading
-    }
 }

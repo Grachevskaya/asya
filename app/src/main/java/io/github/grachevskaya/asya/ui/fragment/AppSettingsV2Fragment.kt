@@ -462,7 +462,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
                     ScopeFragmentArgs(
                         filterOnlyEnabled = false,
                         checked = pack.config.extraAppList.toTypedArray(),
-                        hideMyself = false,
                     )
                 navigate(R.id.nav_scope, args.toBundle())
                 true
@@ -479,7 +478,6 @@ class AppSettingsV2Fragment : Fragment(R.layout.fragment_settings) {
                         filterOnlyEnabled = false,
                         isOpposite = true,
                         checked = pack.config.extraOppositeAppList.toTypedArray(),
-                        hideMyself = false,
                     )
                 navigate(R.id.nav_scope, args.toBundle())
                 true

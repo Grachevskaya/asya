@@ -21,9 +21,9 @@ class ScopeFragment : AppSelectFragment() {
         val args by navArgs<ScopeFragmentArgs>()
         checked = args.checked.toMutableSet()
         if (!args.filterOnlyEnabled) {
-            AppScopeAdapter(checked, args.hideMyself, null)
+            AppScopeAdapter(checked, null)
         } else {
-            AppScopeAdapter(checked, args.hideMyself) {
+            AppScopeAdapter(checked) {
                 ConfigManager.getAppConfig(it)?.useWhitelist == args.isWhiteList
             }
         }

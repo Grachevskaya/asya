@@ -67,11 +67,6 @@
             app:argType="boolean" />
 
         <argument
-            android:name="hideMyself"
-            app:argType="boolean"
-            android:defaultValue="true" />
-
-        <argument
             android:name="isOpposite"
             app:argType="boolean"
             android:defaultValue="false" />

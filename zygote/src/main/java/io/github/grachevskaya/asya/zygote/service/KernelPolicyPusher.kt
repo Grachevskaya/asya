@@ -10,10 +10,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-/*
- * The one place the kernel is told what to watch: the apk table is built from the config and the
- * packages on the device, the pairs are handed over, and a pass is never run twice at once.
- */
+/* The one place the kernel is told what to watch; a pass is never run twice at once. */
 
 internal fun AsyaService.pushPolicyToKernel() {
     logI(TAG) { "Policy push asked for" }
@@ -31,15 +28,10 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
             android.os.Process.THREAD_PRIORITY_BACKGROUND,
         )
         try {
-            // The kernel's own state is asked for first: it is what the manager's card reads, and it
-            // depends on nothing this pass is about to build. Leaving that read until the end is what
-            // made a freshly opened manager say "not loaded" for as long as a whole push takes.
+            // Read first: it depends on nothing this pass builds, and the manager's card shows it.
             refreshKernelStatus()
 
-            // Nothing is built before the storage is there, and not only the apk table: the package
-            // model itself -- every installed app, and the uid each one runs as -- is complete only
-            // once the user's storage is unlocked, and a policy computed from half of it would hide
-            // the wrong things. So the wait is here, at the top, and both tables are built after it.
+            // Both tables are built after the unlock: the package model is complete only then.
             waitForUserUnlocked()
 
             val pairs = buildPolicyPairs()
@@ -51,19 +43,11 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
             logI(TAG) { "Apks for the kernel: ${apks.size}" }
             KernelPolicy.pushApks(apks)
 
-            // The kernel replaces the ->open of what it was just handed, and that happens as the table
-            // arrives -- so the count is read here, on the way back from the push, and nowhere else. A
-            // read taken before this answers with what the kernel held before the push. It is the
-            // answer the ledger check below needs too, which is why it is taken at this one point.
+            // Read on the way back from the push: before it, the answer is what the kernel held then.
             var status = refreshKernelStatus()
 
-                /*
-                 * The kernel's ledger is as long as the module has been loaded, and this side's is as
-                 * long as the service has been running -- so after the module is reloaded the two
-                 * disagree: the kernel holds nothing while this side remembers everything, and a
-                 * difference computed against a ledger the kernel does not have would offer nothing.
-                 * When it says it holds none, this side forgets with it and sends the table again.
-                 */
+            // A reloaded module holds nothing while this side remembers everything: forget with it and
+            // send the table again.
             if (status["apkInodes"] == "0" && KernelPolicy.heldCount() > 0) {
                 logI(TAG) { "The kernel half holds nothing while this side does; sending the table again" }
                 KernelPolicy.forgetHeld()
@@ -71,11 +55,13 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
                 status = refreshKernelStatus()
             }
 
-                /*
-                 *
-                 */
             val failed = status["apkFailed"]?.toIntOrNull() ?: 0
-            if (apks.isEmpty() || failed > 0) {
+
+            if (apks.isNotEmpty() && failed == 0) {
+                // A table that landed is what the budget is for. Handing it back means the next thing
+                // that needs a retry gets one, instead of being told the budget was spent at boot.
+                KernelPolicyPusher.apkRetries.set(0)
+            } else {
                 logI(TAG) { "The apk table did not land (entries=" + apks.size + ", failed=" + failed + "; retrying)" }
                 scheduleApkRetry()
             }
@@ -94,12 +80,8 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
 }
 
 /**
- * Tries the apk table again a little later.
- *
- * An app's path only resolves once the storage it lives on is readable, and at boot that is not
- * yet true -- the tool this replaces learned to wait for exactly this and said why in its log
- * ("cannot watch yet; /data may still be encrypted"). Waiting costs nothing and is the difference
- * between an app being watchable and an isolated child of it staying a number forever.
+ * Tries the apk table again once the storage is readable, which at boot it is not yet. One retry per
+ * need, not per boot: the budget is handed back when a table lands.
  */
 
 internal fun AsyaService.scheduleApkRetry() {
@@ -123,22 +105,10 @@ internal fun AsyaService.scheduleApkRetry() {
 internal fun AsyaService.buildApkTable(
     @Suppress("UNUSED_PARAMETER") pairs: IntArray,
 ): List<Pair<Int, String>> {
-        /*
-         * Every installed apk, not only the ones the rules name.
-         *
-         * The inode hook is not something to add and remove while the system is running: the record
-         * belongs to that one file for as long as the module is loaded, so the set this hands over has
-         * to be the whole of what is installed -- rebuilt on every boot, after every install and after
-         * every start. The tool this replaces said the same in one line: one entry per apk file, even
-         * when several share one.
-         */
     val table = ArrayList<Pair<Int, String>>()
 
-        /*
-         * One entry per apk file: the kernel's ledger is keyed by the file itself, so the same
-         * base.apk offered again -- another user, another package sharing it, a split listed twice --
-         * is not a second hook but a refusal.
-         */
+    // One entry per file: the kernel's ledger is keyed by the file, so the same apk offered twice is
+    // a refusal rather than a second hook.
     val offered = HashSet<String>()
 
     for (userId in UserManagerUtils.getUsers(false, false, false).map { it.id }.distinct()) {
@@ -146,16 +116,8 @@ internal fun AsyaService.buildApkTable(
             val apps = pms.getInstalledApplicationsCompat(0L, userId)
 
             for (app in apps) {
-                    /*
-                     * Only the uids the kernel can name.
-                     *
-                     * A file handed over here is bound to the app that a child born from it belongs
-                     * to, so a uid below the application range -- a system or shared uid, 1000 and
-                     * 1001 and the rest -- has no such app to be bound to, and every one of them came
-                     * back counted as a failure. On this device that was 69 of them, which is exactly
-                     * how many packages carry such a uid, and it was the whole of the number the home
-                     * screen showed. They cannot be named this way, so they are not offered.
-                     */
+                // Below the application range the kernel has no app to bind the file to, and counts it
+                // as a failure.
                 if (app.uid < android.os.Process.FIRST_APPLICATION_UID) continue
 
                 val info = pms.getPackageInfoCompat(app.packageName, 0L, userId) ?: continue
@@ -180,14 +142,9 @@ internal fun AsyaService.buildApkTable(
                      *
                      */
                 if (kind == ISOLATION_NATIVE) {
-                        /*
-                         * A native app: hook the apk (already added) plus the libraries it can
-                         * load. The declared name is only the entry point -- uidscan declares
-                         * libnatsvc.so while the isolated child opens its dependency libscan.so
-                         * -- so the ELF closure is what gets hooked. Nothing declared
-                         * means the framework default, libmain.so; if that resolves to nothing
-                         * on disk, every library of the app is hooked instead.
-                         */
+                    // A native app also gets the libraries it can load: the declared name is only the
+                    // entry point, so the ELF closure is what is hooked. Declared nothing means the
+                    // framework default libmain.so, and nothing on disk means every library.
                     val declaredNames =
                         LinkedHashSet<String>().apply {
                             declaredNativeLibNames(app.packageName)?.let { addAll(it) }

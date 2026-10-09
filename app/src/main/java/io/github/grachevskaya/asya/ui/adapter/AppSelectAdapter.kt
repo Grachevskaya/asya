@@ -12,7 +12,6 @@ import io.github.grachevskaya.asya.util.PackageHelper
 import kotlinx.coroutines.runBlocking
 
 abstract class AppSelectAdapter(
-    private val hideMyself: Boolean,
     private val firstFilter: ((String) -> Boolean)? = null,
 ) : RecyclerView.Adapter<AppSelectAdapter.ViewHolder>(),
     Filterable {
@@ -30,7 +29,6 @@ abstract class AppSelectAdapter(
                     PackageHelper.appList.get().filter {
                         if (firstFilter?.invoke(it) == false) return@filter false
                         if (!PrefManager.appFilter_showSystem && PackageHelper.isSystem(it)) return@filter false
-                        if (it == BuildConfig.APPLICATION_ID && hideMyself) return@filter false
                         val label = PackageHelper.loadAppLabel(it)
                         label.lowercase().contains(constraintLowered) || it.lowercase().contains(constraintLowered)
                     }

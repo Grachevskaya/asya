@@ -4,7 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.grachevskaya.asya.common.ServiceBridge
-import io.github.grachevskaya.asya.receiver.AppChangeReceiver
+import io.github.grachevskaya.asya.common.whenUserUnlocked
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
@@ -30,22 +30,25 @@ class MyApp : Application() {
         AppCompatDelegate.setDefaultNightMode(PrefManager.darkTheme)
 
         /*
-         * The language is not applied here. Both ways of doing it -- updateConfiguration on these
-         * resources, and AppCompat application locales -- write the configuration of the process,
-         * and in a hosted manager the process is the host: the host changed language with the
-         * manager. The choice is applied to the manager own context instead, where the resources
-         * of the apk live: MainActivity.getLocaleAppliedContext and HostContext.
+         * The language is not applied here: both updateConfiguration on these resources and AppCompat
+         * application locales write the configuration of the process, and in a hosted manager the
+         * process is the host's. It is applied to the manager's own context instead, where the apk's
+         * resources live (MainActivity.getLocaleAppliedContext, HostContext).
          */
     }
 
     override fun onCreate() {
         super.onCreate()
         asyaApp = this
-        loadPreferences()
-        AppChangeReceiver.register(this)
 
-        // The service's word, over the bridge the host registered: a transaction is over, so the
-        // tables may be read again. The package broadcasts above arrive earlier than that.
+        // Both read the user's storage, and a read of it on a locked device is one the boot waits on:
+        // they run on the unlock instead, while the application itself starts when the host binds.
+        whenUserUnlocked(this) {
+            loadPreferences()
+            loadConfiguration()
+        }
+
+        // A package transaction is over: the tables and the lists may be read again.
         ServiceBridge.onServiceEvent = {
             PackageHelper.invalidateCache()
             StatusRefresh.trigger()

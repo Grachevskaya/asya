@@ -10,7 +10,7 @@ import io.github.grachevskaya.asya.ui.view.AppItemView
 
 class AppManageAdapter(
     private val onItemClickListener: (String) -> Unit,
-) : AppSelectAdapter(true) {
+) : AppSelectAdapter() {
     inner class ViewHolder(
         view: AppItemView,
     ) : AppSelectAdapter.ViewHolder(view) {

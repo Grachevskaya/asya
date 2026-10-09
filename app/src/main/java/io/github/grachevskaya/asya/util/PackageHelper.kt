@@ -251,13 +251,12 @@ object PackageHelper {
         }
 
     fun loadAppIconFromAppInfo(appInfo: ApplicationInfo): Drawable {
+        // The manager's own icon is not looked up anywhere: the manager is not an installed app, so
+        // the package manager has no record of it, and asking for one produced a name-not-found and an
+        // activity-manager line about a package that does not exist. The apk's own resource is its
+        // icon, and this branch is the one that means "the manager itself".
         return if (appInfo.packageName == BuildConfig.APPLICATION_ID) {
-            val activityName = findEnabledAppComponent(asyaApp)
-            if (activityName == null) {
-                R.mipmap.ic_launcher.asDrawable(asyaApp)
-            } else {
-                asyaApp.packageManager.getActivityIcon(activityName)
-            }
+            R.mipmap.ic_launcher.asDrawable(asyaApp)
         } else {
             try {
                 appInfo.loadIcon(asyaApp.packageManager)
@@ -273,22 +272,5 @@ object PackageHelper {
         }
     }
 
-    /**
-     * The manager's own launcher component, if it is installed -- and it does not have to be.
-     *
-     * The manager is shown from inside the host process and is never installed as an application of
-     * its own, so asking the package manager for it throws instead of answering. Nothing that uses
-     * this needs the component badly enough to crash over it, and crashing on it is what closed the
-     * settings screen the instant it opened.
-     */
-    fun findEnabledAppComponent(context: Context): ComponentName? =
-        try {
-            with(context.packageManager) {
-                val pkgInfo = getPackageInfo(BuildConfig.APPLICATION_ID, PackageManager.GET_ACTIVITIES)
-                pkgInfo.activities?.firstOrNull { it.targetActivity != null }?.asComponentName()
-            }
-        } catch (cause: Throwable) {
-            ServiceClient.log(Log.WARN, TAG, "The manager is not an installed app: ${cause.message}")
-            null
-        }
+
 }

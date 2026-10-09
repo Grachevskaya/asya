@@ -65,6 +65,8 @@ object Logcat {
         cause: Throwable? = null,
         msg: () -> String,
     ) {
+        // The service's configuration gates what is produced; in the host's process there is no
+        // service, so nothing is filtered there.
         if (level != Log.ERROR && service?.config?.errorOnlyLog == true) return
         if (level <= Log.DEBUG && service?.config?.detailLog == false) return
         if (level == Log.VERBOSE && !BuildConfig.DEBUG) return

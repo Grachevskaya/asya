@@ -11,18 +11,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * The service's end of the kernel half's wire.
- *
- * What goes over it is a policy: a flat array of u32 uids, caller then target, caller then
- * target. The kernel module takes it in pages -- a header naming the whole blob and its crc,
- * then pages that must arrive in order, then a commit that applies nothing unless every byte is
- * there and the crc matches. A half-applied policy is worse than none, which is what the crc and
- * the ordered pages are for.
- *
- * Everything here is best effort. The hiding does not depend on the kernel half being loaded,
- * and a device where the upload fails keeps working exactly as before -- with a line in the log
- * saying so, because silence is what makes these things hard to place later.
+/*
+ * The service's end of the kernel half's wire: a stream of records, committed at the end, so a
+ * half-applied table cannot happen. Everything here is best effort -- the userspace hooks hide
+ * whether or not the kernel half is loaded -- and a failure says so in the log.
  */
 object KernelPolicy {
     private const val TAG = "KernelPolicy"
@@ -45,10 +37,7 @@ object KernelPolicy {
     private const val KIND_POLICY = 0
     private const val KIND_APKS = 1
 
-    /*
-     * Matches the kernel side: the table holds apks and extracted native libraries, and
-     * 24 MiB is the headroom under the 65536 entry cap.
-     */
+    // Matches the kernel side: 24 MiB of headroom under the 65536 entry cap.
     private const val PAGE_BYTES = 32 * 1024
     private const val MAX_BLOB_BYTES = 24 * 1024 * 1024
 
@@ -68,10 +57,7 @@ object KernelPolicy {
 
     private val sequence = AtomicInteger(1)
 
-    /**
-     * Begins a blob: BEGIN{kind}, BATCH{count} + records, END{}. The generation counts from 1, since
-     * 0 means "no stream" in the kernel.
-     */
+    /** BEGIN{kind}, BATCH{count} + records, END{}. Generations count from 1: 0 means no stream. */
     private fun beginBlob(kind: Int): ByteArray =
         ByteBuffer
             .allocate(4)
@@ -102,7 +88,7 @@ object KernelPolicy {
         }
 
         if (bytes.size > MAX_BLOB_BYTES) {
-            logE(TAG) { "The policy is ${'$'}{bytes.size} bytes, over the ${'$'}MAX_BLOB_BYTES the kernel takes" }
+            logE(TAG) { "The policy is ${bytes.size} bytes, over the ${MAX_BLOB_BYTES} the kernel takes" }
             return false
         }
 
@@ -127,10 +113,8 @@ object KernelPolicy {
                     return false
                 }
 
-                /*
-                 * 16 bytes per record: action, caller, target, flags. A policy is replaced
-                 * whole, so every record is an ADD and END swaps the set in.
-                 */
+                // 16 bytes per record: action, caller, target, flags. The policy is replaced whole,
+                // so every record is an ADD and END swaps the set in.
                 val total = pairs.size / 2
                 var at = 0
                 while (at < total) {
@@ -170,16 +154,12 @@ object KernelPolicy {
     }
 
     /**
-     * Hands over the apps whose apk the kernel has to watch.
+     * Hands over the files the kernel has to watch: the kernel replaces the ->open of each one, and
+     * the first file of its own code that an isolated child opens gives it the app it belongs to.
      *
-     * This is the second of the two tables and the one this side never sent: the kernel replaces the
-     * ->open of each base.apk named here, and the first file of its own code that an isolated child
-     * opens is what gives it the app it belongs to. With no table there is nothing to watch and every
-     * isolated process stays a bare number.
-     *
-     * The layout is the kernel's (inode_hook.c, tosya_apk_apply): a u32 count, then four u32 per
-     * entry -- action, uid, the byte offset of the path inside this same blob, and the path's size
-     * including its trailing NUL. The kernel resolves the path itself, so no inode is sent.
+     * The layout is the kernel's: a u32 count, then per entry an action, a uid, the byte offset of the
+     * path inside the same blob and the path's size including its NUL. The kernel resolves the path,
+     * so no inode is sent.
      */
 
     /** A file the kernel was told about: who it belongs to, and what it was when it was added. */
@@ -195,22 +175,15 @@ object KernelPolicy {
     /** How much this side believes the kernel holds. */
     fun heldCount(): Int = held.size
 
-    /**
-     * Forgets everything, for the one case where the kernel's own ledger is known to be empty: a
-     * module that has just been loaded holds nothing, and a difference computed against what it no
-     * longer remembers would offer it nothing at all.
-     */
+    /** A module that has just been loaded holds nothing: the two ledgers start level again. */
     fun forgetHeld() = held.clear()
 
     fun pushApks(entries: List<Pair<Int, String>>): Boolean {
         val current = LinkedHashMap<String, Int>()
         for ((uid, path) in entries) current.putIfAbsent(path, uid)
 
-        /*
-         * Every push carries the whole set, not a difference: the kernel parks whatever the newest
-         * generation did not mention. Sending the set is a few dozen records; the ledger is only
-         * kept to name files that are gone.
-         */
+        // The whole set travels every time: the kernel parks whatever the newest generation did not
+        // mention. The ledger is kept only to name files that are gone.
         val adds = ArrayList<Triple<Int, String, Held>>()
         val identityOf = LinkedHashMap<String, Held>()
         for ((path, uid) in current) {
@@ -227,11 +200,8 @@ object KernelPolicy {
             identityOf[path] = identity
         }
 
-        /*
-         * The kernel keys its ledger by (dev, ino), so a file replaced in place under the same path
-         * needs the old identity dropped before the path can be added again -- the file system may
-         * have handed that number to the new file.
-         */
+        // The ledger is keyed by (dev, ino): a file replaced in place needs the old identity dropped
+        // before its path can be added again.
         val replaced =
             identityOf
                 .filter { (path, identity) ->
@@ -341,11 +311,8 @@ object KernelPolicy {
                     return ok
                 }
 
-                /*
-                 * Sent in slices. This runs in system_server, and pushing thousands of records
-                 * in one go keeps the framework from running for seconds -- most visible just
-                 * after the boot animation, when the lock screen comes up.
-                 */
+                // Sent in slices: this runs in system_server, and thousands of records in one go keep
+                // the framework from running for seconds.
                 var sinceYield = 0
                 for (record in addRecords + delRecords) {
                     if (bytes + record.size > PAGE_BYTES - 8 && !flush()) {
@@ -388,11 +355,8 @@ object KernelPolicy {
     }
 
     /**
-     * What the kernel half says about itself, as the pairs the manager shows.
-     *
-     * This is the only command that answers with data: which registrations are in place, how many
-     * entries were hooked where, and what the apk side is holding. The struct carries its own magic and its own size, so a
-     * reply from another build is refused rather than misread.
+     * The only command that answers with data. The struct carries its own magic, so a reply from
+     * another build is refused rather than misread.
      */
     fun requestStatus(): Map<String, String> {
         val fd = Os.socket(OsConstants.AF_NETLINK, OsConstants.SOCK_RAW, NETLINK_GENERIC)
@@ -480,10 +444,7 @@ object KernelPolicy {
 
     // ---------------------------------------------------------------- generic netlink
 
-    /**
-     * The family id has no fixed number: it has to be asked for by name, which is what the
-     * generic netlink controller is for. The reply carries it as one attribute.
-     */
+    /** The family id has no fixed number: the generic netlink controller answers by name. */
     private fun resolveFamily(fd: FileDescriptor): Int {
         val name = FAMILY_NAME.toByteArray(Charsets.UTF_8) + 0
         val payload = attribute(CTRL_ATTR_FAMILY_NAME, name)
@@ -499,9 +460,8 @@ object KernelPolicy {
                     return 0
                 }
 
-        // The attributes begin right after the two headers: nlmsghdr (16) and genlmsghdr (4).
-        // Starting anywhere else walks the chain from the middle of an attribute and reads a length
-        // and a type out of a payload.
+        // Attributes begin after nlmsghdr (16) and genlmsghdr (4); anywhere else walks the chain from
+        // the middle of an attribute.
         var at = NLMSG_HEADER + GENL_HEADER
         while (at + 4 <= reply.size) {
             val length = u16(reply, at)

@@ -46,7 +46,6 @@ class MainActivity
         hostedResources: Resources? = null,
         @Suppress("unused") component: ComponentName? = null,
     ) : AppCompatActivity() {
-        var readyToKill: Boolean = true
         var currentConfiguration: Configuration? = null
 
         /** The page on screen, kept as it changes: a rebuild comes back to it. */
@@ -296,7 +295,6 @@ class MainActivity
 
         /** Theme resources are read while views are inflated, so rebuild the hosted Activity normally. */
         internal fun applyThemeInPlace() {
-            readyToKill = false
             prepareRecreate()
             recreate()
         }
@@ -308,7 +306,6 @@ class MainActivity
          * getLocaleAppliedContext, which is where the language reaches the resources.
          */
         internal fun applyLanguageInPlace() {
-            readyToKill = false
             prepareRecreate()
 
             // The same rebuild the theme uses. The language itself is applied where the activity
@@ -319,7 +316,6 @@ class MainActivity
 
         /** AppCompat changes the configuration; the callback below performs the same rebuild. */
         internal fun applyNightMode(mode: Int) {
-            readyToKill = false
             prepareRecreate()
             AppCompatDelegate.setDefaultNightMode(mode)
         }
@@ -434,7 +430,6 @@ class MainActivity
             super.onConfigurationChanged(newConfig)
 
             if (isNightModeEnabled(currentConfiguration) != isNightModeEnabled(newConfig)) {
-                readyToKill = false
                 applyThemeInPlace()
             }
 
@@ -468,16 +463,6 @@ class MainActivity
 
             @Suppress("DEPRECATION")
             resources.updateConfiguration(configuration, resources.displayMetrics)
-        }
-
-        override fun onDestroy() {
-            if (readyToKill) {
-                ServiceClient.forceStop(BuildConfig.APPLICATION_ID)
-            } else {
-                readyToKill = true
-            }
-
-            super.onDestroy()
         }
 
         private fun getLocaleAppliedContext(context: Context?): Context? {

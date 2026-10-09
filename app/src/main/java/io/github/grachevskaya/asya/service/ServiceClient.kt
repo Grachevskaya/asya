@@ -12,28 +12,13 @@ import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.common.FilterHolder
 import java.io.File
 
-/**
- * The manager reads and writes what the service reads and writes. There is no binder, because
- * nothing on the other end needs one: the manager shows from a host process that runs as the
- * system, so it opens the configuration file itself, appends to the log itself, answers package
- * queries with the same package manager the service used, and stops a package through the
- * activity manager it can reach.
- *
- * What keeps the two in step is the file. The service watches it and reloads when it changes,
- * and that is the moment it also hands the policy to the kernel.
- *
- * The names and shapes below are the ones callers already used, so nothing else had to change
- * when the binder went away.
+/*
+ * The manager, seen from itself: the bridge the module establishes in this process, and the files the
+ * manager keeps. The configuration is read from its file once and held in memory after that; the log
+ * lines and the totals arrive over the bridge and are written out here.
  */
 object ServiceClient {
     private const val TAG = "ServiceClient"
-
-    /**
-     * The host's own private directory, and the neutral prefix the service names its directory
-     * with. The two sides agree on the prefix, and the tail is random so that the name is not a
-     * fixed thing to look for.
-     */
-    private const val SERVICE_DIR = io.github.grachevskaya.asya.common.StatePaths.HOST_DATA_ROOT
 
     /** The totals per caller, as they have arrived so far. */
     @Volatile
@@ -41,10 +26,9 @@ object ServiceClient {
 
     /** Where the totals live between runs: the manager is the side that keeps them. */
     private fun countsFile(): File? =
-        serviceDir()?.let { dir -> File(dir, io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS) }
+        File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS)
 
     init {
-        // The totals outlive this process: what was kept is read back before anything is added.
         val kept: String? = runCatching { countsFile()?.takeIf { it.isFile }?.readText() }.getOrNull()
         if (kept != null) {
             val keptCounts =
@@ -52,29 +36,30 @@ object ServiceClient {
             if (keptCounts != null) counts = keptCounts
         }
 
-        // The lines arrive in batches from the service, and this side is the one that keeps a file.
         io.github.grachevskaya.asya.common.ServiceBridge.logSink = { batch -> appendLogLines(batch) }
 
-        // The counts arrive gathered, and the ledger behind them starts at zero again: they are
-        // added here, which is what lets the total outlive a service that started over.
+        // The manager accumulates them, so the total outlives a service that started over.
         io.github.grachevskaya.asya.common.ServiceBridge.filterSink = { json -> addFilterCounts(json) }
 
-        // The service can change the configuration on its own, when a package has just been installed:
-        // what it then holds is what is kept here, and nothing has to travel back for that.
         io.github.grachevskaya.asya.common.ServiceBridge.configSink = { json ->
             runCatching { configFile()?.writeText(json) }
         }
 
-        // The handshake is the moment this side hands its configuration over: the service starts
-        // with an empty one, and nothing else would push until the next save.
         io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { config = config }
 
-        // The handshake may already have happened: the observer is registered before this is touched.
-        // The push is posted, because the configuration's own accessors are declared further down and
-        // an object cannot write to them from its own initializer.
+        // On its own thread: the host's main thread is busy for seconds at boot, and the accessors
+        // below read a file and call a binder, which any thread may do.
         if (io.github.grachevskaya.asya.common.ServiceBridge.serviceReady) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post { config = config }
+            Thread({ config = config }, "asya-push-config").apply { isDaemon = true }.start()
         }
+
+        android.util.Log.i(
+            "AsyaManager",
+            "client up: ready=" + io.github.grachevskaya.asya.common.ServiceBridge.serviceReady +
+                ", host=" + (io.github.grachevskaya.asya.common.ServiceBridge.host != null) +
+                ", bridge=" + System.identityHashCode(io.github.grachevskaya.asya.common.ServiceBridge) +
+                ", loader=" + io.github.grachevskaya.asya.common.ServiceBridge::class.java.classLoader,
+        )
     }
 
     private fun addFilterCounts(json: String) {
@@ -91,8 +76,7 @@ object ServiceClient {
 
         }
 
-        // The file follows the answer: the service clears its ledger when the manager says it took the
-        // batch, so the write is posted to land after that answer and never before it.
+        // Posted, so the write lands after the answer the service waits for before clearing its ledger.
         android.os.Handler(android.os.Looper.getMainLooper()).post { persistCounts() }
     }
 
@@ -114,53 +98,15 @@ object ServiceClient {
 
     // ---------------------------------------------------------------- the service's files
 
-    private fun serviceDir(): File? =
-        try {
-            val root = File(SERVICE_DIR)
-            val found =
-                root.listFiles { file ->
-                    file.isDirectory && file.name == io.github.grachevskaya.asya.common.StatePaths.MANAGER_DIR
-                }
+    /** The manager's own directory, from the one place that names it. */
+    private fun serviceDir(): File = io.github.grachevskaya.asya.common.StatePaths.stateDir()
 
-            // Says what it saw, because everything else here is silence when it sees nothing.
-            Log.i(
-                TAG,
-                "Looking in $SERVICE_DIR: isDirectory=${root.isDirectory} " +
-                    "entries=${found?.size ?: -1} ${found?.joinToString { it.name }}",
-            )
+    private fun configFile(): File = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.CONFIG_NAME)
 
-            // The directory is this side's own name under the host's data root: the prefix is kept for
-            // the sibling the plugin uses, and nothing here has to guess between the two.
-            found?.firstOrNull()
-                ?: File(root, io.github.grachevskaya.asya.common.StatePaths.MANAGER_DIR).apply { mkdirs() }
-        } catch (cause: Throwable) {
-            Log.e(TAG, "Could not look into $SERVICE_DIR", cause)
-            null
-        }
+    private fun logFile(): File =
+        File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.LOG_NAME)
 
-    private fun configFile(): File? = serviceDir()?.let { File(it, "config.json") }
-
-    private fun logFile(): File? =
-        try {
-            serviceDir()?.let { dir -> File(dir, io.github.grachevskaya.asya.common.StatePaths.LOG_NAME) }
-        } catch (_: Throwable) {
-            null
-        }
-
-    /**
-     * What the kernel half reported about itself, or nothing when it has not reported yet.
-     *
-     * The service asks the kernel and writes the answer next to the status it already keeps, so this
-     * is the same file the manager reads for everything else -- the kernel's own numbers, shown where
-     * a user can see them instead of only on the module's description line.
-     */
-
-    /**
-     * What the kernel half reported about itself, or nothing when it has not reported yet.
-     *
-     * The service asks the kernel and holds the answer; the bridge hands it over. Nothing is
-     * written for the manager to read, and a process the service is not in has no answer.
-     */
+    /** The kernel's own answer, held by the service and handed over the bridge. */
     val kernelStatus: Map<String, String> get() =
         try {
             io.github.grachevskaya.asya.common.ServiceBridge.host
@@ -170,27 +116,41 @@ object ServiceClient {
             emptyMap()
         }
 
-    /*
-     * The status lives in the service, not in a file: the bridge answers with what it holds. A
-     * process the service is not in has no status, which is what the caller had before the file.
-     */
     private fun statusValue(name: String): Int =
         io.github.grachevskaya.asya.common.ServiceBridge.host
             ?.moduleStatus()
             ?.get(name)
             ?.toIntOrNull() ?: 0
 
+    /** Read from the file once, then held in memory: after the start the file is written, not read. */
+    @Volatile
+    private var heldConfig: String? = null
+
     var config: String
-        get() =
-            try {
-                configFile()?.takeIf { it.isFile }?.readText() ?: "{}"
-            } catch (cause: Throwable) {
-                Log.e(TAG, "Could not read the configuration", cause)
-                "{}"
-            }
+        get() {
+            heldConfig?.let { return it }
+
+            val loaded =
+                try {
+                    configFile()?.takeIf { it.isFile }?.readText() ?: "{}"
+                } catch (cause: Throwable) {
+                    Log.e(TAG, "Could not read the configuration", cause)
+                    "{}"
+                }
+
+            heldConfig = loaded
+
+            return loaded
+        }
         set(text) {
-            // The manager owns the disk and the service owns the decision: the document is written
-            // here for the next start, then handed over the bridge for this one.
+            heldConfig = text
+            android.util.Log.i(
+                "AsyaManager",
+                "pushing configuration: " + text.length + " chars, " +
+                    (runCatching { io.github.grachevskaya.asya.common.JsonConfig.parse(text).scope.size }.getOrNull()) +
+                    " caller(s)",
+            )
+
             try {
                 configFile()?.writeText(text)
             } catch (cause: Throwable) {
@@ -235,10 +195,7 @@ object ServiceClient {
     /** 0 loading, 1 working, 2 sick, 3 no hooks: what the service last wrote. */
     val managerWorkMode: Int get() = statusValue("workMode")
 
-    /**
-     * How many queries have been filtered: the total this side has added up, plus the increments the
-     * service has not handed over yet. The service clears what it sends, so nothing is counted twice.
-     */
+    /** The total this side has added up, plus the increments the service has not handed over yet. */
     val filterCount: Int get() =
         synchronized(counts) { counts.totalCount } +
             (io.github.grachevskaya.asya.common.ServiceBridge.host?.filterCount() ?: 0)
@@ -396,7 +353,10 @@ object ServiceClient {
         }
     }
 
-    fun reloadConfigFromFile() = Unit
+    /** Hands the configuration this side already holds over again. No file is read. */
+    fun repushConfig() {
+        config = config
+    }
 
     /** A parceled list, without naming the class: the api that returns it is hidden. */
     private fun unserialize(
