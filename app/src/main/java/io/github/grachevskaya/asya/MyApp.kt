@@ -4,7 +4,6 @@ import android.app.Application
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.grachevskaya.asya.common.ServiceBridge
-import io.github.grachevskaya.asya.common.whenUserUnlocked
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
@@ -21,9 +20,7 @@ class MyApp : Application() {
     val globalScope = CoroutineScope(Dispatchers.Default)
 
     fun loadConfiguration() {
-        if (ServiceClient.serviceVersion > 0) {
-            ConfigManager.init()
-        }
+        ConfigManager.init()
     }
 
     fun loadPreferences() {
@@ -41,12 +38,8 @@ class MyApp : Application() {
         super.onCreate()
         asyaApp = this
 
-        // Both read the user's storage, and a read of it on a locked device is one the boot waits on:
-        // they run on the unlock instead, while the application itself starts when the host binds.
-        whenUserUnlocked(this) {
-            loadPreferences()
-            loadConfiguration()
-        }
+        loadPreferences()
+        loadConfiguration()
 
         // A package transaction is over: the tables and the lists may be read again.
         ServiceBridge.onServiceEvent = {

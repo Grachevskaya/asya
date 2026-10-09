@@ -22,17 +22,34 @@ object ServiceClient {
 
     /** The totals per caller, as they have arrived so far. */
     @Volatile
-    private var counts = io.github.grachevskaya.asya.common.FilterHolder()
+    private var counts =
+        io.github.grachevskaya.asya.common
+            .FilterHolder()
 
     /** Where the totals live between runs: the manager is the side that keeps them. */
-    private fun countsFile(): File? =
-        File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS)
+    private fun countsFile(): File? = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS)
 
     init {
-        val kept: String? = runCatching { countsFile()?.takeIf { it.isFile }?.readText() }.getOrNull()
+        // The totals have to survive the manager being restarted, so a read that fails is said out
+        // loud: an empty ledger and a ledger that could not be read look the same on the screen.
+        val kept: String? =
+            try {
+                countsFile()?.takeIf { it.isFile }?.readText()
+            } catch (cause: Throwable) {
+                Log.e(TAG, "Could not read the totals kept between runs", cause)
+                null
+            }
+
         if (kept != null) {
             val keptCounts =
-                runCatching { io.github.grachevskaya.asya.common.FilterHolder.parse(kept) }.getOrNull()
+                try {
+                    io.github.grachevskaya.asya.common.FilterHolder
+                        .parse(kept)
+                } catch (cause: Throwable) {
+                    Log.e(TAG, "Could not parse the totals kept between runs", cause)
+                    null
+                }
+
             if (keptCounts != null) counts = keptCounts
         }
 
@@ -41,8 +58,14 @@ object ServiceClient {
         // The manager accumulates them, so the total outlives a service that started over.
         io.github.grachevskaya.asya.common.ServiceBridge.filterSink = { json -> addFilterCounts(json) }
 
+        // The file is what the root side reads, so a write that fails is a configuration the kernel
+        // never sees: it is logged rather than dropped.
         io.github.grachevskaya.asya.common.ServiceBridge.configSink = { json ->
-            runCatching { configFile()?.writeText(json) }
+            try {
+                configFile()?.writeText(json)
+            } catch (cause: Throwable) {
+                Log.e(TAG, "Could not write the configuration the service sent", cause)
+            }
         }
 
         io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { config = config }
@@ -64,16 +87,22 @@ object ServiceClient {
 
     private fun addFilterCounts(json: String) {
         val incoming =
-            runCatching { io.github.grachevskaya.asya.common.FilterHolder.parse(json) }.getOrNull()
+            runCatching {
+                io.github.grachevskaya.asya.common.FilterHolder
+                    .parse(json)
+            }.getOrNull()
                 ?: return
 
         synchronized(counts) {
             incoming.filterCounts.forEach { (caller, added) ->
-                val kept = counts.filterCounts.getOrPut(caller) { io.github.grachevskaya.asya.common.FilterHolder.FilterCount() }
+                val kept =
+                    counts.filterCounts.getOrPut(caller) {
+                        io.github.grachevskaya.asya.common.FilterHolder
+                            .FilterCount()
+                    }
                 kept.packageManagerCount += added.packageManagerCount
                 kept.activityLaunchCount += added.activityLaunchCount
             }
-
         }
 
         // Posted, so the write lands after the answer the service waits for before clearing its ledger.
@@ -82,7 +111,11 @@ object ServiceClient {
 
     /** Writes the totals as they stand, off the binder thread that took them. */
     private fun persistCounts() {
-        runCatching { countsFile()?.writeText(synchronized(counts) { counts.toString() }) }
+        try {
+            countsFile()?.writeText(synchronized(counts) { counts.toString() })
+        } catch (cause: Throwable) {
+            Log.e(TAG, "Could not write the totals out", cause)
+        }
     }
 
     private fun appendLogLines(batch: String) {
@@ -99,12 +132,13 @@ object ServiceClient {
     // ---------------------------------------------------------------- the service's files
 
     /** The manager's own directory, from the one place that names it. */
-    private fun serviceDir(): File = io.github.grachevskaya.asya.common.StatePaths.stateDir()
+    private fun serviceDir(): File =
+        io.github.grachevskaya.asya.common.StatePaths
+            .stateDir()
 
     private fun configFile(): File = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.CONFIG_NAME)
 
-    private fun logFile(): File =
-        File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.LOG_NAME)
+    private fun logFile(): File = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.LOG_NAME)
 
     /** The kernel's own answer, held by the service and handed over the bridge. */
     val kernelStatus: Map<String, String> get() =
@@ -147,7 +181,13 @@ object ServiceClient {
             android.util.Log.i(
                 "AsyaManager",
                 "pushing configuration: " + text.length + " chars, " +
-                    (runCatching { io.github.grachevskaya.asya.common.JsonConfig.parse(text).scope.size }.getOrNull()) +
+                    (
+                        runCatching {
+                            io.github.grachevskaya.asya.common.JsonConfig
+                                .parse(text)
+                                .scope.size
+                        }.getOrNull()
+                    ) +
                     " caller(s)",
             )
 
@@ -157,7 +197,8 @@ object ServiceClient {
                 Log.e(TAG, "Could not write the configuration", cause)
             }
 
-            io.github.grachevskaya.asya.common.ServiceBridge.host?.setConfig(text)
+            io.github.grachevskaya.asya.common.ServiceBridge.host
+                ?.setConfig(text)
         }
 
     val logs: String
@@ -183,7 +224,9 @@ object ServiceClient {
         message: String,
     ) = try {
         logFile()?.appendText("$level\t$tag\t$message\n")
-    } catch (_: Throwable) {
+    } catch (cause: Throwable) {
+        // Not logged into the same file that refused the write; the system log is the fallback.
+        Log.e(TAG, "Could not append the log line", cause)
     }
 
     // ---------------------------------------------------------------- what the service reports
@@ -198,20 +241,26 @@ object ServiceClient {
     /** The total this side has added up, plus the increments the service has not handed over yet. */
     val filterCount: Int get() =
         synchronized(counts) { counts.totalCount } +
-            (io.github.grachevskaya.asya.common.ServiceBridge.host?.filterCount() ?: 0)
+            (
+                io.github.grachevskaya.asya.common.ServiceBridge.host
+                    ?.filterCount() ?: 0
+            )
 
     /** The per-caller breakdown of what has been counted, as the totals this side keeps. */
     val detailedFilterStats: String get() = synchronized(counts) { counts.toString() }
 
     fun clearFilterStats() {
         synchronized(counts) {
-            counts = io.github.grachevskaya.asya.common.FilterHolder()
+            counts =
+                io.github.grachevskaya.asya.common
+                    .FilterHolder()
             runCatching { countsFile()?.writeText(counts.toString()) }
         }
 
         // The service still holds what it has not handed over: a reset has to reach that too, or
         // the next flush puts the total back on the screen.
-        io.github.grachevskaya.asya.common.ServiceBridge.host?.clearFilterStats()
+        io.github.grachevskaya.asya.common.ServiceBridge.host
+            ?.clearFilterStats()
     }
 
     // ---------------------------------------------------------------- the system, asked directly

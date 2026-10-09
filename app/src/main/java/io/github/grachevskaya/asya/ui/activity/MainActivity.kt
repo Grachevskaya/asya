@@ -21,12 +21,10 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.DynamicColorsOptions
-import io.github.grachevskaya.asya.BuildConfig
 import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.databinding.ActivityMainBinding
 import io.github.grachevskaya.asya.host.HostContext
-import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.ThemeUtils
 import io.github.grachevskaya.asya.util.ConfigUtils
 

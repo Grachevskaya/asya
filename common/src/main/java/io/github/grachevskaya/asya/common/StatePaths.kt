@@ -15,6 +15,7 @@ object StatePaths {
     const val FILTER_COUNTS = "filter_counts.json"
 
     const val CONFIG_NAME = "config.json"
+    const val MANAGER_APK_NAME = "manager.apk"
 
     const val LOG_NAME = "runtime.log"
 

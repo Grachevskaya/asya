@@ -1,10 +1,7 @@
 package io.github.grachevskaya.asya.util
 
-import android.content.ComponentName
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Binder
 import android.util.Log
@@ -16,7 +13,6 @@ import io.github.grachevskaya.asya.common.Constants
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
 import io.github.grachevskaya.asya.ui.util.ThemeUtils.asDrawable
-import io.github.grachevskaya.asya.ui.util.asComponentName
 import io.github.grachevskaya.asya.ui.util.get
 import io.github.grachevskaya.asya.util.ConfigUtils.getLocale
 import kotlinx.coroutines.Dispatchers
@@ -271,6 +267,4 @@ object PackageHelper {
             }
         }
     }
-
-
 }

@@ -14,6 +14,7 @@ import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.PropertyUtils
 import io.github.grachevskaya.asya.common.Utils.binderLocalScope
 import io.github.grachevskaya.asya.common.Utils.containsMultiple
+import io.github.grachevskaya.asya.zygote.util.ServiceConstants.MAX_SERVICE_WAIT_RETRIES
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.callMethod
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.findField
 import java.io.File
@@ -33,7 +34,7 @@ object ServiceUtils {
 
         do {
             Thread.sleep(250)
-        } while ((ServiceManager.getService(name).also { service = it }) == null && ++count < 100)
+        } while ((ServiceManager.getService(name).also { service = it }) == null && ++count < MAX_SERVICE_WAIT_RETRIES)
 
         return service
     }

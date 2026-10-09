@@ -10,7 +10,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-/* The one place the kernel is told what to watch; a pass is never run twice at once. */
+// The one place the kernel is told what to watch; a pass is never run twice at once.
 
 internal fun AsyaService.pushPolicyToKernel() {
     logI(TAG) { "Policy push asked for" }
@@ -24,15 +24,19 @@ internal fun AsyaService.pushPolicyToKernel() {
 
 internal fun AsyaService.pushPolicyToKernelOnce() {
     Thread {
-                    android.os.Process.setThreadPriority(
+        android.os.Process.setThreadPriority(
             android.os.Process.THREAD_PRIORITY_BACKGROUND,
         )
         try {
             // Read first: it depends on nothing this pass builds, and the manager's card shows it.
             refreshKernelStatus()
 
-            // Both tables are built after the unlock: the package model is complete only then.
-            waitForUserUnlocked()
+            // Both tables are built after the unlock: the package model is complete only then, and
+            // the wait has no deadline because a device may sit at the lock screen for hours. It comes
+            // back early only when there is no way to wait at all, which is worth saying out loud.
+            if (!waitForUserUnlocked()) {
+                logW(TAG) { "The unlock cannot be waited for here; the table is built from what is readable" }
+            }
 
             val pairs = buildPolicyPairs()
             logI(TAG) { "Policy for the kernel: ${pairs.size / 2} pair(s)" }
@@ -93,7 +97,9 @@ internal fun AsyaService.scheduleApkRetry() {
     // The table needs the package list, and the list is what the user being unlocked produces:
     // waiting on that gate is what the retries stood in for, and one wait is cheaper than five.
     Thread {
-        waitForUserUnlocked()
+        if (!waitForUserUnlocked()) {
+            logW(TAG) { "The unlock cannot be waited for here; the retry runs on what is readable" }
+        }
 
         pushPolicyToKernel()
     }.apply {

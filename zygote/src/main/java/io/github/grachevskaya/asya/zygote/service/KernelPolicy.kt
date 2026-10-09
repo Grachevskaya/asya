@@ -3,6 +3,8 @@ package io.github.grachevskaya.asya.zygote.service
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructTimeval
+import io.github.grachevskaya.asya.zygote.service.KernelConstants.MIN_STATUS_LENGTH
+import io.github.grachevskaya.asya.zygote.service.KernelConstants.YIELD_BATCH_SIZE
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logE
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
@@ -320,7 +322,7 @@ object KernelPolicy {
                     }
                     batch.add(record)
                     bytes += record.size
-                    if (++sinceYield >= 512) {
+                    if (++sinceYield >= YIELD_BATCH_SIZE) {
                         sinceYield = 0
                         if (!flush()) {
                             return false
@@ -395,13 +397,18 @@ object KernelPolicy {
         }
     }
 
-    /** The fixed structure, field by field, in the order the kernel writes it. */
-    private fun parseStatus(
+    /**
+     * The fixed structure, field by field, in the order the kernel writes it.
+     *
+     * Internal rather than private: it is a function of the bytes and of nothing else, and the field
+     * offsets are the one thing about this wire that a test on the host can pin down.
+     */
+    internal fun parseStatus(
         reply: ByteArray,
         offset: Int,
         length: Int,
     ): Map<String, String> {
-        if (length < 128) return linkedMapOf("state" to "short status, $length bytes")
+        if (length < MIN_STATUS_LENGTH) return linkedMapOf("state" to "short status, $length bytes")
         if (i32(reply, offset) != STATUS_MAGIC) return linkedMapOf("state" to "wrong magic")
 
         return linkedMapOf(

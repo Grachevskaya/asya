@@ -20,12 +20,12 @@ public final class HostFiles {
     /** The reported directory is there for the first process only; later forks inherit a cleared field. */
     public static void takeFromModuleDirectory(String moduleDir) {
         try {
-            if (moduleDir == null || !new File(moduleDir, "manager.apk").isFile()) {
+            if (moduleDir == null || !new File(moduleDir, io.github.grachevskaya.asya.common.StatePaths.MANAGER_APK_NAME).isFile()) {
                 moduleDir = findOpenModuleDirectory();
             }
             if (moduleDir == null) return;
 
-            File apk = new File(moduleDir, "manager.apk");
+            File apk = new File(moduleDir, io.github.grachevskaya.asya.common.StatePaths.MANAGER_APK_NAME);
 
             // ART finds an oat only through a real path: <apk>/oat/<isa>/manager.odex, and a
             // /proc/self/fd path has no directory to look in. The descriptor is the fallback.
@@ -69,23 +69,12 @@ public final class HostFiles {
     /** The manager apk as this host's own state directory holds it, or null when it is not there. */
     private static String realManagerApkPath() {
         try {
-            File root = new File("/data/data/" + HostConstants.HOST_PACKAGE);
-            File[] found = root.listFiles((dir, name) -> name.startsWith(STATE_PREFIX));
-            if (found == null) {
-                return null;
-            }
-            for (File dir : found) {
-                File apk = new File(dir, "manager.apk");
-                if (apk.isFile()) {
-                    return apk.getAbsolutePath();
-                }
-            }
+            File apk = new File(io.github.grachevskaya.asya.common.StatePaths.INSTANCE.stateDir(), "manager.apk");
+            return apk.isFile() ? apk.getAbsolutePath() : null;
         } catch (Throwable ignored) {
+            return null;
         }
-        return null;
     }
-
-    private static final String STATE_PREFIX = ".cache_";
 
     /** The module directory, by whichever descriptor still points at it. */
     private static String findOpenModuleDirectory() {

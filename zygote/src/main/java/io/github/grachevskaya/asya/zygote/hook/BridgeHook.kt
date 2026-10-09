@@ -1,6 +1,7 @@
 package io.github.grachevskaya.asya.zygote.hook
 
 import android.os.Binder
+import io.github.grachevskaya.asya.common.BridgeProtocol
 import io.github.grachevskaya.asya.common.ServiceBridge
 import io.github.grachevskaya.asya.common.Utils.getPackageUidCompat
 import io.github.grachevskaya.asya.zygote.host.HostConstants
@@ -26,7 +27,7 @@ class BridgeHook : IFrameworkHook {
 
             // The host's own observers come from the same uid, so only the descriptor tells them apart.
             val descriptor = runCatching { binder.interfaceDescriptor }.getOrNull()
-            if (descriptor != ServiceBridge.DESCRIPTOR_OF_OURS) return@hookAfter
+            if (descriptor != BridgeProtocol.DESCRIPTOR_OF_OURS) return@hookAfter
 
             logI(TAG) { "A registration of this module: " + descriptor }
 

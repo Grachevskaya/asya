@@ -78,12 +78,10 @@ class AsyaServiceDataHolder {
     }
 
     /** The total as it stands, read under the lock the writers take. */
-    fun filterCountSnapshot(): Int =
-        synchronized(filterCountLock) { filterHolder.totalCount }
+    fun filterCountSnapshot(): Int = synchronized(filterCountLock) { filterHolder.totalCount }
 
     /** The ledger as it stands, read under the same lock. */
-    fun filterCountsSnapshot(): String =
-        synchronized(filterCountLock) { filterHolder.toString() }
+    fun filterCountsSnapshot(): String = synchronized(filterCountLock) { filterHolder.toString() }
 
     /** Empties the ledger a reader is shown, under the same lock every other touch takes. */
     fun clearFilterCounts() {
@@ -143,6 +141,5 @@ class AsyaServiceDataHolder {
         }
 
         pushDelta(caller, amount, filterType)
-
     }
 }

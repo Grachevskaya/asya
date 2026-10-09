@@ -4,6 +4,27 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Parcel
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_CONFIG_CHANGED
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_CONFIG_JSON
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_CONFIG_SET
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_FILTER_CLEAR
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_FILTER_COUNT
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_FILTER_DELTA
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_FILTER_STATS
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_HELLO
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_KERNEL_STATUS
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_LOG_LINES
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_MANAGER_BINDER
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_MODULE_STATUS
+import io.github.grachevskaya.asya.common.BridgeProtocol.CODE_PACKAGES_CHANGED
+import io.github.grachevskaya.asya.common.BridgeProtocol.DESCRIPTOR_OF_OURS
+import io.github.grachevskaya.asya.common.BridgeProtocol.DISPATCH_INTERFACE
+import io.github.grachevskaya.asya.common.BridgeProtocol.DISPATCH_UNKNOWN
+import io.github.grachevskaya.asya.common.BridgeProtocol.PAYLOAD_BUNDLE
+import io.github.grachevskaya.asya.common.BridgeProtocol.PAYLOAD_SHARED_MEMORY
+import io.github.grachevskaya.asya.common.BridgeProtocol.managerDispatch
+import io.github.grachevskaya.asya.common.BridgeProtocol.payloadKind
+import io.github.grachevskaya.asya.common.BridgeProtocol.serviceHandles
 
 /*
  * The channel between the service and the manager, which run in different processes.
@@ -13,90 +34,10 @@ import android.os.Parcel
  * descriptor, and the service answers on that same object with a binder of its own. The manager then
  * hands over a plain binder of its own, and every later message goes there.
  *
- * A code sent to a framework object must stay outside 1..IBinder.LAST_CALL_TRANSACTION: a code inside
- * that range is taken for a framework call, the interface token is demanded, and the transaction is
- * refused. The framework object the host registers can therefore never carry this module's traffic.
+ * The codes themselves, and the two rules that keep the ends from drifting apart, are in
+ * [BridgeProtocol].
  */
 object ServiceBridge {
-    internal const val CODE_HELLO = 0x00A50001
-    internal const val CODE_PACKAGES_CHANGED = 0x00A50002
-    internal const val CODE_MODULE_STATUS = 0x00A50010
-
-    /** The configuration, written by the manager: the one message that is a whole document. */
-    internal const val CODE_CONFIG_SET = 0x00A50018
-
-    /** Log lines, batched: one transaction per batch, never one per line. */
-    internal const val CODE_LOG_LINES = 0x00A50019
-
-    /** Increments of the filter counts, so the manager accumulates them itself. */
-    internal const val CODE_FILTER_DELTA = 0x00A5001A
-
-    /** A reset the manager asks for: the ledger the service still holds is emptied with it. */
-    internal const val CODE_FILTER_CLEAR = 0x00A5001C
-
-    /** The manager's own binder: the object it registers with the framework refuses our codes. */
-    internal const val CODE_MANAGER_BINDER = 0x00A5001D
-
-    /** A configuration this side changed itself, sent so the manager can keep the file. */
-    internal const val CODE_CONFIG_CHANGED = 0x00A5001B
-
-    /** How many lines travel in one batch, and how long the oldest waits for company. */
-    const val LOG_BATCH_LINES = 32
-
-    const val LOG_FLUSH_PERIOD_MS = 250L
-
-    /** Markers for a payload that travels in shared memory rather than in the parcel itself. */
-    internal const val PAYLOAD_BUNDLE = 0
-    internal const val PAYLOAD_SHARED_MEMORY = 1
-
-    /**
-     * Above this the bytes go through shared memory. The threshold is close to what a transaction can
-     * carry on purpose: the shared-memory mapping is released only on finalization, so it is kept for
-     * documents a parcel cannot hold.
-     */
-    internal const val PARCEL_LIMIT = 256 * 1024
-
-    internal fun payloadKind(size: Int): Int = if (size <= PARCEL_LIMIT) PAYLOAD_BUNDLE else PAYLOAD_SHARED_MEMORY
-
-    internal const val CODE_KERNEL_STATUS = 0x00A50011
-    internal const val CODE_CONFIG_JSON = 0x00A50012
-    internal const val CODE_FILTER_COUNT = 0x00A50013
-    internal const val CODE_FILTER_STATS = 0x00A50014
-
-    /** The name the manager's object answers to, which no framework observer shares. */
-    const val DESCRIPTOR_OF_OURS = "asya.bridge.manager"
-
-    internal const val DISPATCH_UNKNOWN = 0
-    internal const val DISPATCH_HANDLED = 1
-    internal const val DISPATCH_INTERFACE = 2
-
-    /**
-     * How the manager answers a code: its own two, the interface cases it must not forward (the
-     * framework calls the observer through this same object), or neither. The decision is a
-     * function of the code, so the set of codes and their meaning can be checked without a device.
-     */
-    internal fun managerDispatch(code: Int): Int =
-        when {
-            code == CODE_HELLO ||
-                code == CODE_PACKAGES_CHANGED ||
-                code == CODE_LOG_LINES ||
-                code == CODE_FILTER_DELTA ||
-                code == CODE_CONFIG_CHANGED -> DISPATCH_HANDLED
-            code in 1..IBinder.LAST_CALL_TRANSACTION -> DISPATCH_INTERFACE
-            else -> DISPATCH_UNKNOWN
-        }
-
-    /** The codes the service end answers, and nothing else: it is a plain binder of this module. */
-    internal fun serviceHandles(code: Int): Boolean =
-        code == CODE_MODULE_STATUS ||
-            code == CODE_KERNEL_STATUS ||
-            code == CODE_CONFIG_JSON ||
-            code == CODE_CONFIG_SET ||
-            code == CODE_FILTER_COUNT ||
-            code == CODE_FILTER_STATS ||
-            code == CODE_FILTER_CLEAR ||
-            code == CODE_MANAGER_BINDER
-
     /** What the service can answer while it is running. */
     interface Host {
         fun moduleStatus(): Map<String, String>?
@@ -308,6 +249,71 @@ object ServiceBridge {
     }
 
     /**
+     * The manager's inbox: a plain binder of this module that answers its codes.
+     *
+     * The object the host registers with the framework cannot be used for them: a code in the binder's
+     * own range is taken for a framework call, the observer's token is then demanded, and the
+     * transaction is refused. This one carries no framework interface at all.
+     */
+    class ManagerInbox : Binder() {
+        override fun onTransact(
+            code: Int,
+            data: Parcel,
+            reply: Parcel?,
+            flags: Int,
+        ): Boolean {
+            when (managerDispatch(code)) {
+                DISPATCH_UNKNOWN -> return super.onTransact(code, data, reply, flags)
+                DISPATCH_INTERFACE -> return true
+            }
+
+            when (code) {
+                CODE_PACKAGES_CHANGED -> {
+                    onServiceEvent?.invoke()
+
+                    return true
+                }
+
+                CODE_FILTER_DELTA -> {
+                    val sink = filterSink
+                    val counts = data.readLargeString()
+                    val taken = sink != null && !counts.isNullOrEmpty()
+
+                    if (taken) sink?.invoke(counts ?: "")
+
+                    // The answer is the manager's word on whether the document was kept.
+                    reply?.writeInt(if (taken) 1 else 0)
+
+                    return true
+                }
+
+                CODE_CONFIG_CHANGED -> {
+                    val sink = configSink
+                    val json = data.readLargeString()
+
+                    if (sink != null && !json.isNullOrEmpty()) sink(json)
+
+                    return true
+                }
+
+                CODE_LOG_LINES -> {
+                    val sink = logSink
+                    val batch = data.readLargeString()
+
+                    if (sink != null && !batch.isNullOrEmpty()) sink(batch)
+
+                    return true
+                }
+            }
+
+            return super.onTransact(code, data, reply, flags)
+        }
+    }
+
+/** The inbox the service is told to answer on, made once and kept for the process's life. */
+    val inbox: ManagerInbox by lazy { ManagerInbox() }
+
+/**
      * The manager's end: the object the framework is given, and the object the service keeps.
      *
      * It is a process observer so that registering it is an ordinary thing to do, and it is a
@@ -315,77 +321,12 @@ object ServiceBridge {
      * the interface: what the framework would call is not the module's business, and answering
      * them where they arrive means a platform that adds one cannot turn the carrier into a crash.
      */
-    /**
- * The manager's inbox: a plain binder of this module that answers its codes.
- *
- * The object the host registers with the framework cannot be used for them: a code in the binder's
- * own range is taken for a framework call, the observer's token is then demanded, and the
- * transaction is refused. This one carries no framework interface at all.
- */
-class ManagerInbox : Binder() {
-    override fun onTransact(
-        code: Int,
-        data: Parcel,
-        reply: Parcel?,
-        flags: Int,
-    ): Boolean {
-        when (managerDispatch(code)) {
-            DISPATCH_UNKNOWN -> return super.onTransact(code, data, reply, flags)
-            DISPATCH_INTERFACE -> return true
-        }
-
-        when (code) {
-            CODE_PACKAGES_CHANGED -> {
-                onServiceEvent?.invoke()
-
-                return true
-            }
-
-            CODE_FILTER_DELTA -> {
-                val sink = filterSink
-                val counts = data.readLargeString()
-                val taken = sink != null && !counts.isNullOrEmpty()
-
-                if (taken) sink?.invoke(counts ?: "")
-
-                // The answer is the manager's word on whether the document was kept.
-                reply?.writeInt(if (taken) 1 else 0)
-
-                return true
-            }
-
-            CODE_CONFIG_CHANGED -> {
-                val sink = configSink
-                val json = data.readLargeString()
-
-                if (sink != null && !json.isNullOrEmpty()) sink(json)
-
-                return true
-            }
-
-            CODE_LOG_LINES -> {
-                val sink = logSink
-                val batch = data.readLargeString()
-
-                if (sink != null && !batch.isNullOrEmpty()) sink(batch)
-
-                return true
-            }
-        }
-
-        return super.onTransact(code, data, reply, flags)
-    }
-}
-
-/** The inbox the service is told to answer on, made once and kept for the process's life. */
-val inbox: ManagerInbox by lazy { ManagerInbox() }
-
-class ManagerBinder : android.app.IProcessObserver.Stub() {
-    /**
-     * The name this object answers to, and the only thing that tells it apart from the framework's own
-     * observers: the system registers those from the same uid, so a caller cannot tell by who it is.
-     */
-    override fun getInterfaceDescriptor(): String = DESCRIPTOR_OF_OURS
+    class ManagerBinder : android.app.IProcessObserver.Stub() {
+        /**
+         * The name this object answers to, and the only thing that tells it apart from the framework's own
+         * observers: the system registers those from the same uid, so a caller cannot tell by who it is.
+         */
+        override fun getInterfaceDescriptor(): String = DESCRIPTOR_OF_OURS
 
         override fun onTransact(
             code: Int,
@@ -407,44 +348,6 @@ class ManagerBinder : android.app.IProcessObserver.Stub() {
 
                     serviceReady = true
                     onServiceReady?.invoke()
-
-                    return true
-                }
-
-                CODE_PACKAGES_CHANGED -> {
-                    onServiceEvent?.invoke()
-
-                    return true
-                }
-
-                CODE_FILTER_DELTA -> {
-                    val sink = filterSink
-                    val counts = data.readLargeString()
-                    val taken = sink != null && !counts.isNullOrEmpty()
-
-                    if (taken) sink?.invoke(counts ?: "")
-
-                    // The answer is the manager's word on whether the document was kept: the service
-                    // clears its ledger for a batch that was taken and for nothing else.
-                    reply?.writeInt(if (taken) 1 else 0)
-
-                    return true
-                }
-
-                CODE_CONFIG_CHANGED -> {
-                    val sink = configSink
-                    val json = data.readLargeString()
-
-                    if (sink != null && !json.isNullOrEmpty()) sink(json)
-
-                    return true
-                }
-
-                CODE_LOG_LINES -> {
-                    val sink = logSink
-                    val batch = data.readLargeString()
-
-                    if (sink != null && !batch.isNullOrEmpty()) sink(batch)
 
                     return true
                 }
@@ -584,6 +487,7 @@ class ManagerBinder : android.app.IProcessObserver.Stub() {
     }
 
     /** Called on the service's side: tell the manager that a transaction is over. */
+
     /** A configuration this side changed itself, on its way to the manager that keeps the file. */
     fun notifyConfigChanged(
         manager: IBinder,

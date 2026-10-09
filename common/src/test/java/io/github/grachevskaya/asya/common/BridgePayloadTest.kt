@@ -1,9 +1,9 @@
 package io.github.grachevskaya.asya.common
 
-import io.github.grachevskaya.asya.common.ServiceBridge.PARCEL_LIMIT
-import io.github.grachevskaya.asya.common.ServiceBridge.PAYLOAD_BUNDLE
-import io.github.grachevskaya.asya.common.ServiceBridge.PAYLOAD_SHARED_MEMORY
-import io.github.grachevskaya.asya.common.ServiceBridge.payloadKind
+import io.github.grachevskaya.asya.common.BridgeProtocol.PARCEL_LIMIT
+import io.github.grachevskaya.asya.common.BridgeProtocol.PAYLOAD_BUNDLE
+import io.github.grachevskaya.asya.common.BridgeProtocol.PAYLOAD_SHARED_MEMORY
+import io.github.grachevskaya.asya.common.BridgeProtocol.payloadKind
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

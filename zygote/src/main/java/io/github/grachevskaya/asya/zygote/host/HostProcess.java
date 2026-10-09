@@ -24,8 +24,7 @@ public final class HostProcess {
     /** The manager's application is made once. */
     private static volatile boolean managerApplicationStarted;
     /**
-     * Called from the bind hook, with the ActivityThread the framework is binding. Sui's
-     * postBindApplication, at the same moment.
+     * Called from the bind hook, with the ActivityThread the framework is binding.
      */
     public static void onApplicationBound(ActivityThread thread) {
         ActivityThreadBridge.init();
@@ -91,68 +90,25 @@ public final class HostProcess {
         }
     }
 
-    /**
-     * Touches the manager's client once the user's storage is readable, and not before: everything the
-     * client does is a file under that storage, and reading one of those before the key is in place is
-     * what holds the lock screen back. Nothing is waited for on a broadcast here -- a broadcast has to
-     * be delivered to this process's context to arrive at all.
-     */
+    /** Touches the manager's client once the user's storage is readable, and not before. */
     private static void wakeManagerClientOnUnlock(ActivityThread thread, ManagerApk apk) {
-        Thread waker = new Thread(() -> {
-            // What the client needs is not an answer about a user, it is its own files: whether the
-            // manager's own directory can be listed is the ground truth, and the framework's answers
-            // are checked beside it. The first attempts are reported, so a device that never wakes
-            // says why.
-            java.io.File home = null;
-            try {
-                String path = HostFiles.apkPath();
-                if (path != null) home = new java.io.File(path).getParentFile();
-            } catch (Throwable ignored) {
-                // No path to probe; the framework's answers are what is left.
-            }
+        Application application = thread.getApplication();
 
-            HostLog.i("The manager's client waits for the unlock");
-
-            for (int attempt = 0; ; attempt++) {
-                String ce = android.os.SystemProperties.get("sys.user.0.ce_available");
-                Object byUser = "not asked";
-                boolean readable = false;
-
-                try {
-                    Context context = systemContext(thread);
-                    android.os.UserManager users = context.getSystemService(android.os.UserManager.class);
-                    byUser = users == null ? "no UserManager"
-                            : android.os.UserManager.class.getMethod("isUserUnlocked", Integer.TYPE).invoke(users, 0);
-                } catch (Throwable cause) {
-                    byUser = "threw " + cause.getClass().getSimpleName();
-                }
-
-                try {
-                    readable = home != null && home.list() != null;
-                } catch (Throwable cause) {
-                    readable = false;
-                }
-
-                if (attempt < 3) {
-                    HostLog.i("Unlock check: ce=%s, by-user=%s, state dir readable=%s", ce, byUser, readable);
-                }
-
-                if (readable || Boolean.TRUE.equals(byUser) || "1".equals(ce) || "true".equalsIgnoreCase(ce)) break;
-
-                try {
-                    Thread.sleep(500L);
-                } catch (InterruptedException interrupted) {
-                    return;
-                }
-            }
-
-            HostLog.i("The manager's storage is readable; waking the manager's client");
-
+        if (io.github.grachevskaya.asya.common.UserUnlockKt.storageIsUnlocked(application)) {
+            HostLog.i("The user's storage is readable; waking the manager's client");
             touchManagerClient(apk);
-        }, "asya-manager-client");
 
-        waker.setDaemon(true);
-        waker.start();
+            return;
+        }
+
+        HostLog.i("The manager's client waits for the unlock");
+
+        io.github.grachevskaya.asya.common.UserUnlockKt.whenUserUnlocked(application, () -> {
+            HostLog.i("The user's storage is readable; waking the manager's client");
+            touchManagerClient(apk);
+
+            return kotlin.Unit.INSTANCE;
+        });
     }
 
     /**
@@ -171,39 +127,6 @@ public final class HostProcess {
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not touch the manager's client");
         }
-    }
-
-    /**
-     * Whether the user's own storage is readable yet. The property is asked first: it answers about
-     * user 0, while UserManager answers about the user its context belongs to, and the context reached
-     * from here is the SYSTEM one.
-     */
-    private static boolean isUserUnlocked(ActivityThread thread) {
-        try {
-            Context context = systemContext(thread);
-            android.os.UserManager users = context.getSystemService(android.os.UserManager.class);
-
-            /*
-             * Asked about user 0 by number, and not about "the user this context belongs to": the one
-             * reached from here is the SYSTEM context, and its verdict is about a different user's
-             * storage. Returning that verdict is what kept the manager's client from ever being woken.
-             * That overload is not in the stubs this module compiles against -- it is there at runtime,
-             * which is where this runs -- so it is reached reflectively.
-             */
-            if (users != null) {
-                Object answer = android.os.UserManager.class
-                        .getMethod("isUserUnlocked", Integer.TYPE)
-                        .invoke(users, 0);
-
-                if (Boolean.TRUE.equals(answer)) return true;
-            }
-        } catch (Throwable ignored) {
-            // Nothing left to ask but the property below.
-        }
-
-        String ce = android.os.SystemProperties.get("sys.user.0.ce_available");
-
-        return "1".equals(ce) || "true".equalsIgnoreCase(ce);
     }
 
     /**
@@ -293,7 +216,7 @@ public final class HostProcess {
         try {
             // A request that arrives while the device is still locked has nothing to show yet.
 
-            if (!isUserUnlocked(thread)) {
+            if (!io.github.grachevskaya.asya.common.UserUnlockKt.storageIsUnlocked(thread.getApplication())) {
                 HostLog.i("Ignoring a manager request: the user is still locked");
                 return;
             }
@@ -333,7 +256,7 @@ public final class HostProcess {
     }
 
     /**
-     * Puts the manager in the launcher's shortcut list, the way Sui does.
+     * Puts the manager in the launcher's shortcut list.
      *
      * A shortcut is the one entry point the system can offer for something that is not an installed
      * activity of its own: it carries an intent, it carries the logo, and it can be tapped from the

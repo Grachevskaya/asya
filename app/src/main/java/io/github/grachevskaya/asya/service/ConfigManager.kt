@@ -46,8 +46,10 @@ object ConfigManager {
         try {
             val rawConfig = ServiceClient.config
             config = JsonConfig.parse(rawConfig)
-        } catch (_: Throwable) {
-            // ignore the issues
+        } catch (cause: Throwable) {
+            // A configuration that will not parse leaves the rules it carried behind, and an empty
+            // set of rules hides nothing: the failure is said out loud rather than swallowed.
+            Log.e(TAG, "Could not parse the configuration; starting from none", cause)
         }
 
         config.configVersion = BuildConfig.CONFIG_VERSION

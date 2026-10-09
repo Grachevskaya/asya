@@ -2,13 +2,14 @@ package io.github.grachevskaya.asya.zygote.service
 
 import android.content.pm.IPackageManager
 import android.os.Build
-import android.os.FileObserver
 import android.os.IBinder
+import io.github.grachevskaya.asya.common.BridgeProtocol
 import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.common.Constants
 import io.github.grachevskaya.asya.common.FilterHolder
 import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.RiskyPackageUtils
+import io.github.grachevskaya.asya.common.ServiceBridge
 import io.github.grachevskaya.asya.common.Utils.binderLocalScope
 import io.github.grachevskaya.asya.common.Utils.cleanRemnantsFromConfig
 import io.github.grachevskaya.asya.common.Utils.getPackageInfoCompat
@@ -35,10 +36,6 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.Logcat.logWithLevel
 import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.isConflictingModuleInstalled
-import io.github.grachevskaya.asya.zygote.util.ServiceUtils.ensureFileIsRW
-import java.io.File
-import kotlin.concurrent.thread
-import io.github.grachevskaya.asya.common.ServiceBridge
 
 class AsyaService(
     val pms: IPackageManager,
@@ -100,7 +97,7 @@ class AsyaService(
             )
         }
 
-        // What kind of object this is decides whether our own codes may be sent to it: a framework
+        // What kind of object this is decides whether these codes may be sent to it: a framework
         // interface refuses them, and this line is what tells the two apart in the field.
         val descriptor = runCatching { binder.interfaceDescriptor }.getOrNull()
         logI(TAG) { "The manager is on the bridge: " + descriptor + " / " + binder.javaClass.name }
@@ -138,12 +135,12 @@ class AsyaService(
     override fun configJson(): String? = runCatching { config.toString() }.getOrNull()
 
     /** The manager pushed a configuration: it is applied here and written to disk for the next boot. */
+
     /** The manager pushed a configuration: the service applies it and keeps it in memory. */
     override fun setConfig(json: String): Boolean =
         runCatching { applyPushedConfig(json) }
             .onFailure { logE(TAG, it) { "Could not apply the pushed configuration" } }
             .isSuccess
-
 
     val hooker = BulkHooker()
     val dataHolder = AsyaServiceDataHolder()
@@ -169,7 +166,7 @@ class AsyaService(
 
     private fun countGathered() {
         val now = System.currentTimeMillis()
-        if (now - lastCountFlush < ServiceBridge.LOG_FLUSH_PERIOD_MS) return
+        if (now - lastCountFlush < BridgeProtocol.LOG_FLUSH_PERIOD_MS) return
 
         lastCountFlush = now
         flushFilterCounts()
@@ -416,6 +413,7 @@ class AsyaService(
 
         return true
     }
+
     /** One line for the next batch: a transaction per line would cost the channel more than logging. */
     fun addLog(
         parsedMsg: String,
@@ -431,8 +429,8 @@ class AsyaService(
 
             val due =
                 urgent ||
-                    pendingLogLines.size >= ServiceBridge.LOG_BATCH_LINES ||
-                    now - pendingLogSince >= ServiceBridge.LOG_FLUSH_PERIOD_MS
+                    pendingLogLines.size >= BridgeProtocol.LOG_BATCH_LINES ||
+                    now - pendingLogSince >= BridgeProtocol.LOG_FLUSH_PERIOD_MS
 
             // Nothing leaves while there is no manager to take it: the lines wait for the handshake
             // instead of being handed to a binder that is not there.
@@ -458,6 +456,7 @@ class AsyaService(
         runCatching { ServiceBridge.notifyLogLines(binder, lines) }
             .onFailure { logW(TAG) { "Could not hand the log lines over: $it" } }
     }
+
     /** Whatever is gathered leaves before the process does. */
     fun flushForShutdown() {
         flushFilterCounts()
@@ -539,6 +538,4 @@ class AsyaService(
     override fun clearFilterStats() {
         dataHolder.clearFilterCounts()
     }
-
-
 }

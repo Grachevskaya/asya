@@ -18,6 +18,11 @@ class BridgePayloadInstrumentedTest {
     private class FakeService : Host {
         var config: String? = null
 
+        /** The binder the manager handed over on the handshake, kept so the test can prove it arrived. */
+        var managerInbox: android.os.IBinder? = null
+
+        var resets = 0
+
         override fun moduleStatus(): Map<String, String> = mapOf("workMode" to "1")
 
         override fun kernelStatus(): Map<String, String> = mapOf("state" to "loaded")
@@ -33,6 +38,14 @@ class BridgePayloadInstrumentedTest {
         override fun filterCount(): Int = 0
 
         override fun filterStatsJson(): String? = null
+
+        override fun clearFilterStats() {
+            resets++
+        }
+
+        override fun setManagerBinder(binder: android.os.IBinder) {
+            managerInbox = binder
+        }
 
         override fun onPackagesChanged() = Unit
 
@@ -55,7 +68,13 @@ class BridgePayloadInstrumentedTest {
             data.recycle()
         }
 
-        return (ServiceBridge.host ?: error("the handshake did not set the host")) to fake
+        val host = ServiceBridge.host ?: error("the handshake did not set the host")
+
+        // The handshake is two moves, not one: the manager answers with its own plain binder, and the
+        // service is told to answer on it. A service that never received it has no way back.
+        assertNotNull("the handshake left the service without a binder to answer on", fake.managerInbox)
+
+        return host to fake
     }
 
     private fun payloads(): List<String> =
@@ -97,5 +116,14 @@ class BridgePayloadInstrumentedTest {
 
         assertNotNull(host.kernelStatus())
         assertEquals(mapOf("state" to "loaded"), host.kernelStatus())
+    }
+
+    @Test
+    fun aResetReachesTheServiceOnce() {
+        val (host, fake) = connected()
+
+        assertEquals(0, fake.resets)
+        host.clearFilterStats()
+        assertEquals("the reset did not reach the service", 1, fake.resets)
     }
 }

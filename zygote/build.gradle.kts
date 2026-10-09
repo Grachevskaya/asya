@@ -162,6 +162,8 @@ dependencies {
     implementation(projects.common)
     compileOnly(projects.stub)
 
+    testImplementation(libs.junit)
+
     implementation(libs.androidx.annotation.jvm)
     implementation(libs.io.github.vova7878.r8annotations)
 

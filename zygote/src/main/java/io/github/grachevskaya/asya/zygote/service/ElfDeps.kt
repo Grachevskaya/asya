@@ -1,5 +1,9 @@
 package io.github.grachevskaya.asya.zygote.service
 
+import io.github.grachevskaya.asya.zygote.service.ElfConstants.MAX_DEPENDENCY_DEPTH
+import io.github.grachevskaya.asya.zygote.service.ElfConstants.MAX_DYNAMIC_ENTRIES
+import io.github.grachevskaya.asya.zygote.service.ElfConstants.MAX_PROGRAM_HEADERS
+import io.github.grachevskaya.asya.zygote.service.ElfConstants.MAX_STRING_TABLE_GUARD
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -25,7 +29,7 @@ object ElfDeps {
         queue.addAll(names)
         var steps = 0
         while (queue.isNotEmpty()) {
-            if (++steps > 1024) return null
+            if (++steps > MAX_DEPENDENCY_DEPTH) return null
             val name = queue.removeFirst()
             if (!out.add(name)) continue
             val file = File(dir, name)
@@ -85,7 +89,7 @@ object ElfDeps {
                 val phOff = if (is64) rd64(eh, 32) else rd32(eh, 28)
                 val phEnt = if (is64) rd16(eh, 54) else rd16(eh, 42)
                 val phNum = if (is64) rd16(eh, 56) else rd16(eh, 44)
-                if (phNum <= 0L || phEnt <= 0L || phNum > 128L) return@use null
+                if (phNum <= 0L || phEnt <= 0L || phNum > MAX_PROGRAM_HEADERS) return@use null
 
                 val loads = ArrayList<Pair<Long, Long>>() // offset, vaddr
                 var dynOff = -1L
@@ -112,7 +116,7 @@ object ElfDeps {
                 val buf = ByteArray(dynEnt.toInt())
                 val ents = ArrayList<Pair<Long, Long>>()
                 var p = dynOff
-                while (ents.size < 4096) {
+                while (ents.size < MAX_DYNAMIC_ENTRIES) {
                     raf.seek(p)
                     if (raf.read(buf) < buf.size) break
                     val tag = if (is64) rd64(buf, 0) else rd32(buf, 0)
@@ -131,7 +135,7 @@ object ElfDeps {
                     val sb = StringBuilder()
                     var c = raf.read()
                     var guard = 0
-                    while (c > 0 && guard < 512) {
+                    while (c > 0 && guard < MAX_STRING_TABLE_GUARD) {
                         sb.append(c.toChar())
                         c = raf.read()
                         guard++

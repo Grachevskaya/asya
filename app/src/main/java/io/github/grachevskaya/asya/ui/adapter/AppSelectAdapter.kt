@@ -3,7 +3,6 @@ package io.github.grachevskaya.asya.ui.adapter
 import android.widget.Filter
 import android.widget.Filterable
 import androidx.recyclerview.widget.RecyclerView
-import io.github.grachevskaya.asya.BuildConfig
 import io.github.grachevskaya.asya.common.CollectionUtils.sync
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.ui.util.get
