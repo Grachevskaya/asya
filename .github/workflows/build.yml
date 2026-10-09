@@ -2,17 +2,21 @@ name: build
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
-# One job per kernel family, in parallel, each inside the image that family is built in. The chat is
-# the only transport and it is one message: `reserve` opens an album of nine files -- eight ko slots
-# and the package slot -- every build job replaces its own slot and publishes the file id it got back
-# as its own job output (file_id1 .. file_id8, one key each, so nothing collides), and `pack` collects
-# those eight ids, downloads the ko files, builds the manager and the package, and writes the package
-# into the ninth slot, which `reserve` names in its own output.
+# Three ways in, and the same job walks them all.
 #
-# No artifacts, no repository variables, no deletions, no pins.
+# A push to main runs `pack` alone: the manager and the module are compiled, checked and assembled
+# into the installer, and nothing is sent -- there is no album to open and no kernel half to collect.
+#
+# A tag, and a run started by hand, are the release, and then all three run. The chat is the only transport and it is one message:
+# `reserve` opens an album of nine files -- eight ko slots and the package slot -- every ko job
+# replaces its own slot and publishes the file id it got back as its own job output (file_id1 ..
+# file_id8, one key each, so nothing collides), and `pack` collects those eight ids, downloads the ko
+# files into the installer, and writes that installer into the ninth slot, which `reserve` names in
+# its own output.
 
 permissions:
   contents: read
@@ -78,8 +82,9 @@ jobs:
     name: tosya.ko (${{ matrix.kmi }})
     runs-on: ubuntu-latest
     needs: reserve
-    # Runs for a tag that reserved nothing, where the object is built and goes no further.
-    if: always()
+    # A release -- a tag, or a run started by hand -- builds the kernel half; a push to main
+    # never gets here.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     # One key per slot: distinct names, so the eight instances of this matrix do not overwrite each
     # other -- a matrix merges its outputs by key, and only the slot's own job sets its key.
     outputs:
@@ -110,6 +115,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: ${{ vars.KERNEL_REPO }}
+          # The kernel repository keeps its default branch as a decoy; its code is on main.
+          ref: main
           token: ${{ github.token }}
           path: tosya
           fetch-depth: 0
@@ -153,11 +160,15 @@ jobs:
           echo "file_id${SLOT}=${file_id}" >> "$GITHUB_OUTPUT"
           echo "slot ${SLOT} (message ${mid}) <- $(basename "$ko") as ${file_id}"
 
+  # The one job a push to main runs: it compiles and checks the manager and the module, and on a
+  # tag it also packs the kernel halves the ko jobs produced into the installer.
   pack:
-    name: pack and write the package
+    name: compile, and pack on a tag
     runs-on: ubuntu-latest
     needs: [reserve, ko]
-    if: needs.reserve.result == 'success' && needs.ko.result == 'success'
+    # A branch push has neither job behind it, and this is where it compiles. A tag packs here only
+    # once the album opened and the kernel half built: a release missing either is not published.
+    if: ${{ always() && !cancelled() && needs.reserve.result != 'failure' && needs.ko.result != 'failure' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -168,9 +179,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Write key
-        # The signing key is read where this repository carries one; the package still builds without
-        # it, and says so rather than failing halfway.
+      - name: Write the properties the build keeps out of git
+        # The four keystore secrets are the four values the signing config is made of: the key, the
+        # password that opens it, the alias, and the password for that alias. The file is written
+        # either way, because the build reads it whether or not this repository carries a key.
         env:
           KEY_STORE: ${{ secrets.KEY_STORE }}
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
@@ -178,9 +190,23 @@ jobs:
           ALIAS_KEY_PASSWORD: ${{ secrets.ALIAS_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "${KEY_STORE:-}" ]; then
+          rm -f local.properties
+          touch local.properties
+
+          set -- "${KEY_STORE:-}" "${KEY_STORE_PASSWORD:-}" "${ALIAS:-}" "${ALIAS_KEY_PASSWORD:-}"
+          n=0
+          for v in "$@"; do
+            if [ -n "$v" ]; then n=$((n + 1)); fi
+          done
+
+          # All four or none: a half-set key is a signing config that fails somewhere else.
+          if [ "$n" = "0" ]; then
             echo "no signing key in this repository; the manager is built unsigned"
             exit 0
+          fi
+          if [ "$n" != "4" ]; then
+            echo "the signing key is incomplete: $n of the four keystore secrets are set"
+            exit 1
           fi
           echo officialBuild=true >> local.properties
           echo storePassword="$KEY_STORE_PASSWORD" >> local.properties
@@ -211,6 +237,9 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
       - name: Collect the eight ko files by the ids the build jobs published
+        # Only a release that opened the album has ids to collect; one that reserved nothing builds
+        # the package without the kernel half, which the module does not need to work.
+        if: ${{ needs.reserve.outputs.message_id != '' && needs.reserve.outputs.message_id != '0' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
@@ -238,13 +267,14 @@ jobs:
             i=$((i + 1))
           done
           ls -l zygote/src/main/assets/ko
-      - name: Build the manager and the module
+      - name: Compile and check the manager and the module
         id: build
         run: |
           set -euo pipefail
           ./gradlew --no-daemon prebuild check :app:assemble :zygote:assemble
           echo "zip=$(ls zygote/build/outputs/magisk/release/*.zip)" >> "$GITHUB_OUTPUT"
       - name: Write the package into the ninth slot
+        if: ${{ needs.reserve.outputs.slot9_id != '' && needs.reserve.outputs.slot9_id != '0' }}
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
