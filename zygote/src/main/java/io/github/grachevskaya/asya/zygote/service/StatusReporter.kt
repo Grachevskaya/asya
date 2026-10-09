@@ -5,8 +5,9 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 
 /*
- * What the module tells the manager and the kernel about itself: the module status, the kernel
- * status and the stream generation it reports back, each written where the other side reads it.
+ * What the module says about itself, and the kernel's own answer about what it is doing. Both are
+ * held here and both are read over the bridge: nothing about either reaches the disk for the manager
+ * to pick up, and there is no stream generation for either to carry.
  */
 
 /*
@@ -18,81 +19,84 @@ internal fun AsyaService.saveModuleStatus() {
 }
 
 /**
- * Asks the kernel half what it is doing, and keeps the answer next to the status.
+ * Asks the kernel half what it is doing, and keeps the answer where the manager's queries read it.
  *
- * This is the half of the module's description line that was about the kernel: which registrations
- * are in place, how many entries are hooked where, and what the apk side is holding. The manager
- * reads this directory already, so the card that shows it needs no channel of its own -- and the
- * numbers are the kernel's own, not a second opinion about them.
+ * The inode hook waits for no configuration: it is put in place for anything of the right kind that
+ * passes the kernel, so nothing here depends on a pushed policy. The answer is read once when the
+ * service comes up -- once /data is unlocked, since the kernel holds nothing before that -- and again
+ * after every install and removal, which are the only things that change it: no poll runs in between.
+ * It is the kernel's own answer, not a second opinion about it.
  */
+internal fun AsyaService.refreshKernelStatus(): Map<String, String> {
+    val status = runCatching { KernelPolicy.requestStatus() }.getOrDefault(emptyMap())
+    kernelStatusCache = status
 
-/**
- * The kernel's numbers move as apps come and go, so they are asked for again now and then; the card
- * would otherwise show whatever was true the last time the configuration changed.
- */
+    logI(TAG) {
+        "Kernel status: " + (status["state"] ?: "no answer") +
+            " · apk inodes=" + (status["apkInodes"] ?: "?") +
+            " · failed=" + (status["apkFailed"] ?: "?")
+    }
 
-/**
- *
- */
-
-internal fun AsyaService.publishStatusToKernelSu(
-    pairs: Int,
-    apks: Int,
-    isolated: String,
-) {
-    val kernelUp =
-        runCatching {
-            KernelPolicy.requestStatus()["state"] == "loaded"
-        }.getOrDefault(false)
-    val serviceUp = apks > 0 || pairs > 0
-    val description =
-        buildString {
-            append(if (serviceUp) "userspace service running" else "userspace service not ready")
-            append(" · ")
-            append(if (kernelUp) "kernel module loaded" else "kernel module not loaded")
-        }
-
-    logI(TAG) { "Status: " + description + " · apk=" + apks + " · policy=" + pairs / 2 + " · " + isolated }
+    return status
 }
 
-internal fun AsyaService.jsonDecode(text: String): Map<String, String> =
-    runCatching {
-        Regex("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"")
-            .findAll(text)
-            .associate { it.groupValues[1] to it.groupValues[2] }
-    }.getOrDefault(emptyMap())
-
 /**
+ * Waits for the user's storage to be the user's, with no deadline.
+ *
+ * Everything the kernel is handed names paths under /data, and until that storage is unlocked those
+ * paths cannot be resolved: a pass that ran before this returns would hand the kernel a set that is
+ * missing the apps living there. So there is no timeout and no giving up here -- the unlock is not
+ * something to wait for at most five minutes, it is the thing being waited for, and it is waited for
+ * as long as it takes. The wait is woken by the unlock itself, so nothing is polled while it sits.
  */
+internal fun AsyaService.waitForUserUnlocked() {
+    if (storageIsUnlocked()) return
 
-internal fun AsyaService.waitForUserUnlocked(timeoutMs: Long) {
-    val deadline = System.currentTimeMillis() + timeoutMs
+    val unlocked = java.util.concurrent.CountDownLatch(1)
+    val receiver =
+        object : android.content.BroadcastReceiver() {
+            override fun onReceive(
+                context: android.content.Context?,
+                intent: android.content.Intent?,
+            ) {
+                unlocked.countDown()
+            }
+        }
 
-    val um: android.os.UserManager? =
+    runCatching {
+        io.github.grachevskaya.asya.zygote.util.ContextUtils.application
+            .registerReceiver(
+                receiver,
+                android.content.IntentFilter(android.content.Intent.ACTION_USER_UNLOCKED),
+            )
+    }.onFailure { logW(TAG, it) { "Could not listen for the unlock" } }
+
+    try {
+        if (!storageIsUnlocked()) unlocked.await()
+    } catch (_: InterruptedException) {
+        return
+    } finally {
         runCatching {
-            val app =
-                Class
-                    .forName("android.app.AppGlobals")
-                    .getMethod("getInitialApplication")
-                    .invoke(null) as? android.content.Context
-            app?.getSystemService(android.os.UserManager::class.java)
-        }.getOrNull()
-
-    while (System.currentTimeMillis() < deadline) {
-        val unlocked = runCatching { um?.isUserUnlocked ?: true }.getOrDefault(true)
-        if (unlocked) return
-        try {
-            Thread.sleep(2_000L)
-        } catch (_: InterruptedException) {
-            return
+            io.github.grachevskaya.asya.zygote.util.ContextUtils.application.unregisterReceiver(receiver)
         }
     }
-    logW(TAG) { "Gave up waiting for the user to be unlocked; building the table anyway" }
 }
 
+/** Whether the storage the apks live on can be read yet. */
+private fun storageIsUnlocked(): Boolean =
+    runCatching {
+        val app =
+            Class
+                .forName("android.app.AppGlobals")
+                .getMethod("getInitialApplication")
+                .invoke(null) as? android.content.Context
+
+        app?.getSystemService(android.os.UserManager::class.java)?.isUserUnlocked ?: true
+    }.getOrDefault(true)
+
 /*
- * The state this part owns: what the module says about itself, the file the manager reads it from, and
- * the file the kernel half writes its own answer into.
+ * The state this part owns: what the module says about itself, and the kernel half's last answer.
+ * Neither is a file: the manager asks the bridge, and these maps are what it is told.
  */
 internal object StatusReporter {
     internal var managerWorkMode: Int = Constants.MANAGER_WORK_MODE_UNKNOWN

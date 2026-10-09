@@ -146,9 +146,11 @@ internal fun AsyaService.declaredNativeLibNames(packageName: String): Set<String
 
         if (!PackageModelReader.declaredLogOnce) {
             PackageModelReader.declaredLogOnce = true
+            // Not a failure of the read: the read worked, and this package declares no native
+            // library to preload. Whoever is named here is only the first package that was asked.
             logI(TAG) {
-                "Declared read failed for " + packageName +
-                    ": pmsClass=" + pms.javaClass.name +
+                "No declared native lib on " + packageName +
+                    ", read itself: pmsClass=" + pms.javaClass.name +
                     ", packagesFound=" + (PackageModelReader.packagesFoundForLog) +
                     ", packageFound=" + (PackageModelReader.androidPackageForLog != null) +
                     ", packageKeys=" + (PackageModelReader.propertyKeysForLog.take(6))

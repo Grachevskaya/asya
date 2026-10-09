@@ -28,6 +28,13 @@ class BridgeHook : IFrameworkHook {
 
             val binder = observer.asBinder()
 
+            // The host's own observers are registered from the same uid as this module's manager, so the
+            // object itself has to say who it belongs to: only the manager's answers under this name.
+            val descriptor = runCatching { binder.interfaceDescriptor }.getOrNull()
+            if (descriptor != ServiceBridge.DESCRIPTOR_OF_OURS) return@hookAfter
+
+            logI(TAG) { "A registration of this module: " + descriptor }
+
             // The registration that matters is this module’s own, made by the manager when it starts.
             // Anything else that lands here belongs to the host and is left alone: it has no handshake
             // to answer, and treating it as one would be a lie rather than a fallback.

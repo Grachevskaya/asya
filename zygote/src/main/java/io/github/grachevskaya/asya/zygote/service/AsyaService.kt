@@ -51,11 +51,18 @@ class AsyaService(
     /** Live from the kernel, not the last file write. One netlink round trip, cheap. */
     override fun moduleStatus(): Map<String, String> = StatusReporter.moduleStatus
 
-    override fun kernelStatus(): Map<String, String> = runCatching { KernelPolicy.requestStatus() }.getOrDefault(emptyMap())
+    /** The kernel's last answer, kept so that a manager query never waits on a netlink round trip. */
+    @Volatile
+    internal var kernelStatusCache: Map<String, String> = emptyMap()
+
+    override fun kernelStatus(): Map<String, String> = kernelStatusCache
 
     /** Package install/remove/replace: the table follows through the ordinary push path. */
     override fun onPackagesChanged() {
         invalidatePackageCaches()
+
+        // The push that follows is what moves the kernel's numbers, and they are read on its way back:
+        // an install or a removal is one of the moments the table is handed over again.
         pushPolicyToKernel()
         announcePackagesChanged()
     }
@@ -81,13 +88,33 @@ class AsyaService(
     @Volatile
     private var managerBinder: android.os.IBinder? = null
 
+    override fun setManagerBinder(binder: android.os.IBinder) = onManagerBinder(binder)
+
     fun onManagerBinder(binder: android.os.IBinder) {
         managerBinder = binder
+
+        // The manager can die while this service lives: without this, batches would be handed to a
+        // binder that answers nothing, and the guard that keeps them for a live manager would pass.
+        runCatching {
+            binder.linkToDeath(
+                {
+                    managerBinder = null
+                    logW(TAG) { "The manager is gone from the bridge" }
+                },
+                0,
+            )
+        }
+
+        // What kind of object this is decides whether our own codes may be sent to it: a framework
+        // interface refuses them, and this line is what tells the two apart in the field.
+        val descriptor = runCatching { binder.interfaceDescriptor }.getOrNull()
+        logI(TAG) { "The manager is on the bridge: " + descriptor + " / " + binder.javaClass.name }
+
         logI(TAG) { "The manager is on the bridge" }
     }
 
     /** The live counter, which is what the manager reads while this service is in the process. */
-    override fun filterCount(): Int = dataHolder.filterHolder.totalCount
+    override fun filterCount(): Int = dataHolder.filterCountSnapshot()
 
     override fun filterStatsJson(): String? = getDetailedFilterStats()
 
@@ -138,12 +165,11 @@ class AsyaService(
         val taken = dataHolder.takeFilterCounts()
         if (taken.totalCount == 0) return
 
-        runCatching { ServiceBridge.notifyFilterDeltas(binder, taken.toString()) }
-            .onFailure {
-                // The ledger goes back where it came from: the manager never saw it.
-                dataHolder.mergeFilterCounts(taken)
-                logW(TAG) { "Could not hand the counts over: $it" }
-            }
+        // The ledger goes back where it came from unless the manager said it took it.
+        if (!runCatching { ServiceBridge.notifyFilterDeltas(binder, taken.toString()) }.getOrDefault(false)) {
+            dataHolder.mergeFilterCounts(taken)
+            logW(TAG) { "The counts were not taken; they wait for the next batch" }
+        }
     }
 
     private fun countGathered() {
@@ -197,6 +223,11 @@ class AsyaService(
         }
 
         logI(TAG) { "Asya service initialized in mode ${StatusReporter.managerWorkMode}" }
+
+        // Nothing is read here: what the kernel holds becomes true on the way back from a push, and
+        // the push is what start-up is for. It happens as soon as the manager's configuration is in,
+        // and it waits for the unlock without a deadline -- the apk paths cannot be resolved before
+        // that, and the unlock is what the wait is for, not a window it has to fit into.
     }
 
     /**
@@ -520,9 +551,9 @@ class AsyaService(
         pms.getPackageInfoCompat(packageName, 0L, userId)
     }
 
-    fun getDetailedFilterStats() = dataHolder.filterHolder.toString()
+    fun getDetailedFilterStats(): String = dataHolder.filterCountsSnapshot()
 
-    fun clearFilterStats() {
+    override fun clearFilterStats() {
         dataHolder.clearFilterCounts()
     }
 

@@ -16,6 +16,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 
 internal fun AsyaService.pushPolicyToKernel() {
+    logI(TAG) { "Policy push asked for" }
+
     if (!KernelPolicyPusher.policyPushRunning.compareAndSet(false, true)) {
         KernelPolicyPusher.policyPushQueued.set(true)
         return
@@ -25,33 +27,35 @@ internal fun AsyaService.pushPolicyToKernel() {
 
 internal fun AsyaService.pushPolicyToKernelOnce() {
     Thread {
-            /*
-             * Keep the event channel alive. The fifo has to live in the host's own directory
-             * (both sides can reach it there) and that directory only exists once this service
-             * is running -- so this is the place that can create it. The root side waits for
-             * it and refreshes the module description on every byte written to it.
-             */
-        android.os.Process.setThreadPriority(
+                    android.os.Process.setThreadPriority(
             android.os.Process.THREAD_PRIORITY_BACKGROUND,
         )
         try {
+            // The kernel's own state is asked for first: it is what the manager's card reads, and it
+            // depends on nothing this pass is about to build. Leaving that read until the end is what
+            // made a freshly opened manager say "not loaded" for as long as a whole push takes.
+            refreshKernelStatus()
+
+            // Nothing is built before the storage is there, and not only the apk table: the package
+            // model itself -- every installed app, and the uid each one runs as -- is complete only
+            // once the user's storage is unlocked, and a policy computed from half of it would hide
+            // the wrong things. So the wait is here, at the top, and both tables are built after it.
+            waitForUserUnlocked()
+
             val pairs = buildPolicyPairs()
             logI(TAG) { "Policy for the kernel: ${pairs.size / 2} pair(s)" }
             KernelPolicy.push(pairs)
 
-            waitForUserUnlocked(5 * 60_000L)
-
             val apks = buildApkTable(pairs)
             logIsolationClasses()
             logI(TAG) { "Apks for the kernel: ${apks.size}" }
-            publishStatusToKernelSu(
-                pairs.size,
-                apks.size,
-                "none=" + PackageModelReader.isolationCounts[ISOLATION_NONE] +
-                    " app=" + PackageModelReader.isolationCounts[ISOLATION_APP] +
-                    " native=" + PackageModelReader.isolationCounts[ISOLATION_NATIVE],
-            )
             KernelPolicy.pushApks(apks)
+
+            // The kernel replaces the ->open of what it was just handed, and that happens as the table
+            // arrives -- so the count is read here, on the way back from the push, and nowhere else. A
+            // read taken before this answers with what the kernel held before the push. It is the
+            // answer the ledger check below needs too, which is why it is taken at this one point.
+            var status = refreshKernelStatus()
 
                 /*
                  * The kernel's ledger is as long as the module has been loaded, and this side's is as
@@ -60,11 +64,11 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
                  * difference computed against a ledger the kernel does not have would offer nothing.
                  * When it says it holds none, this side forgets with it and sends the table again.
                  */
-            val status = KernelPolicy.requestStatus()
             if (status["apkInodes"] == "0" && KernelPolicy.heldCount() > 0) {
                 logI(TAG) { "The kernel half holds nothing while this side does; sending the table again" }
                 KernelPolicy.forgetHeld()
                 KernelPolicy.pushApks(apks)
+                status = refreshKernelStatus()
             }
 
                 /*
@@ -107,7 +111,7 @@ internal fun AsyaService.scheduleApkRetry() {
     // The table needs the package list, and the list is what the user being unlocked produces:
     // waiting on that gate is what the retries stood in for, and one wait is cheaper than five.
     Thread {
-        waitForUserUnlocked(5 * 60_000L)
+        waitForUserUnlocked()
 
         pushPolicyToKernel()
     }.apply {

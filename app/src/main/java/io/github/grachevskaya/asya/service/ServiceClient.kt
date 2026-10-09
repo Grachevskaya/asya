@@ -34,7 +34,6 @@ object ServiceClient {
      * fixed thing to look for.
      */
     private const val SERVICE_DIR = io.github.grachevskaya.asya.common.StatePaths.HOST_DATA_ROOT
-    private const val DIR_PREFIX = io.github.grachevskaya.asya.common.StatePaths.DIR_PREFIX
 
     /** The totals per caller, as they have arrived so far. */
     @Volatile
@@ -69,6 +68,13 @@ object ServiceClient {
         // The handshake is the moment this side hands its configuration over: the service starts
         // with an empty one, and nothing else would push until the next save.
         io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { config = config }
+
+        // The handshake may already have happened: the observer is registered before this is touched.
+        // The push is posted, because the configuration's own accessors are declared further down and
+        // an object cannot write to them from its own initializer.
+        if (io.github.grachevskaya.asya.common.ServiceBridge.serviceReady) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post { config = config }
+        }
     }
 
     private fun addFilterCounts(json: String) {
@@ -83,8 +89,16 @@ object ServiceClient {
                 kept.activityLaunchCount += added.activityLaunchCount
             }
 
-            runCatching { countsFile()?.writeText(counts.toString()) }
         }
+
+        // The file follows the answer: the service clears its ledger when the manager says it took the
+        // batch, so the write is posted to land after that answer and never before it.
+        android.os.Handler(android.os.Looper.getMainLooper()).post { persistCounts() }
+    }
+
+    /** Writes the totals as they stand, off the binder thread that took them. */
+    private fun persistCounts() {
+        runCatching { countsFile()?.writeText(synchronized(counts) { counts.toString() }) }
     }
 
     private fun appendLogLines(batch: String) {
@@ -103,7 +117,10 @@ object ServiceClient {
     private fun serviceDir(): File? =
         try {
             val root = File(SERVICE_DIR)
-            val found = root.listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
+            val found =
+                root.listFiles { file ->
+                    file.isDirectory && file.name == io.github.grachevskaya.asya.common.StatePaths.MANAGER_DIR
+                }
 
             // Says what it saw, because everything else here is silence when it sees nothing.
             Log.i(
@@ -223,16 +240,21 @@ object ServiceClient {
      * service has not handed over yet. The service clears what it sends, so nothing is counted twice.
      */
     val filterCount: Int get() =
-        counts.totalCount + (io.github.grachevskaya.asya.common.ServiceBridge.host?.filterCount() ?: 0)
+        synchronized(counts) { counts.totalCount } +
+            (io.github.grachevskaya.asya.common.ServiceBridge.host?.filterCount() ?: 0)
 
     /** The per-caller breakdown of what has been counted, as the totals this side keeps. */
-    val detailedFilterStats: String get() = counts.toString()
+    val detailedFilterStats: String get() = synchronized(counts) { counts.toString() }
 
     fun clearFilterStats() {
         synchronized(counts) {
             counts = io.github.grachevskaya.asya.common.FilterHolder()
             runCatching { countsFile()?.writeText(counts.toString()) }
         }
+
+        // The service still holds what it has not handed over: a reset has to reach that too, or
+        // the next flush puts the total back on the screen.
+        io.github.grachevskaya.asya.common.ServiceBridge.host?.clearFilterStats()
     }
 
     // ---------------------------------------------------------------- the system, asked directly
