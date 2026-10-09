@@ -33,8 +33,70 @@ object ServiceClient {
      * with. The two sides agree on the prefix, and the tail is random so that the name is not a
      * fixed thing to look for.
      */
-    private const val SERVICE_DIR = "/data/data/com.android.systemui"
-    private const val DIR_PREFIX = ".cache_"
+    private const val SERVICE_DIR = io.github.grachevskaya.asya.common.StatePaths.HOST_DATA_ROOT
+    private const val DIR_PREFIX = io.github.grachevskaya.asya.common.StatePaths.DIR_PREFIX
+
+    /** The totals per caller, as they have arrived so far. */
+    @Volatile
+    private var counts = io.github.grachevskaya.asya.common.FilterHolder()
+
+    /** Where the totals live between runs: the manager is the side that keeps them. */
+    private fun countsFile(): File? =
+        serviceDir()?.let { dir -> File(dir, io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS) }
+
+    init {
+        // The totals outlive this process: what was kept is read back before anything is added.
+        val kept: String? = runCatching { countsFile()?.takeIf { it.isFile }?.readText() }.getOrNull()
+        if (kept != null) {
+            val keptCounts =
+                runCatching { io.github.grachevskaya.asya.common.FilterHolder.parse(kept) }.getOrNull()
+            if (keptCounts != null) counts = keptCounts
+        }
+
+        // The lines arrive in batches from the service, and this side is the one that keeps a file.
+        io.github.grachevskaya.asya.common.ServiceBridge.logSink = { batch -> appendLogLines(batch) }
+
+        // The counts arrive gathered, and the ledger behind them starts at zero again: they are
+        // added here, which is what lets the total outlive a service that started over.
+        io.github.grachevskaya.asya.common.ServiceBridge.filterSink = { json -> addFilterCounts(json) }
+
+        // The service can change the configuration on its own, when a package has just been installed:
+        // what it then holds is what is kept here, and nothing has to travel back for that.
+        io.github.grachevskaya.asya.common.ServiceBridge.configSink = { json ->
+            runCatching { configFile()?.writeText(json) }
+        }
+
+        // The handshake is the moment this side hands its configuration over: the service starts
+        // with an empty one, and nothing else would push until the next save.
+        io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { config = config }
+    }
+
+    private fun addFilterCounts(json: String) {
+        val incoming =
+            runCatching { io.github.grachevskaya.asya.common.FilterHolder.parse(json) }.getOrNull()
+                ?: return
+
+        synchronized(counts) {
+            incoming.filterCounts.forEach { (caller, added) ->
+                val kept = counts.filterCounts.getOrPut(caller) { io.github.grachevskaya.asya.common.FilterHolder.FilterCount() }
+                kept.packageManagerCount += added.packageManagerCount
+                kept.activityLaunchCount += added.activityLaunchCount
+            }
+
+            runCatching { countsFile()?.writeText(counts.toString()) }
+        }
+    }
+
+    private fun appendLogLines(batch: String) {
+        try {
+            val file = logFile() ?: return
+
+            file.parentFile?.mkdirs()
+            file.appendText(batch)
+        } catch (cause: Throwable) {
+            Log.e(TAG, "Could not append the log lines", cause)
+        }
+    }
 
     // ---------------------------------------------------------------- the service's files
 
@@ -50,7 +112,10 @@ object ServiceClient {
                     "entries=${found?.size ?: -1} ${found?.joinToString { it.name }}",
             )
 
+            // The directory is this side's own name under the host's data root: the prefix is kept for
+            // the sibling the plugin uses, and nothing here has to guess between the two.
             found?.firstOrNull()
+                ?: File(root, io.github.grachevskaya.asya.common.StatePaths.MANAGER_DIR).apply { mkdirs() }
         } catch (cause: Throwable) {
             Log.e(TAG, "Could not look into $SERVICE_DIR", cause)
             null
@@ -60,7 +125,7 @@ object ServiceClient {
 
     private fun logFile(): File? =
         try {
-            serviceDir()?.walkTopDown()?.firstOrNull { it.isFile && it.name == "runtime.log" }
+            serviceDir()?.let { dir -> File(dir, io.github.grachevskaya.asya.common.StatePaths.LOG_NAME) }
         } catch (_: Throwable) {
             null
         }
@@ -107,24 +172,15 @@ object ServiceClient {
                 "{}"
             }
         set(text) {
-            // The service applies it and writes it: the disk copy follows the push, and without a
-            // bridge (a process the service is not in yet) the file is written where it belongs.
-            io.github.grachevskaya.asya.common.ServiceBridge.host?.let { bridge ->
-                if (bridge.setConfig(text)) return
-            }
-
+            // The manager owns the disk and the service owns the decision: the document is written
+            // here for the next start, then handed over the bridge for this one.
             try {
-                val file =
-                    configFile() ?: run {
-                        Log.e(TAG, "No service directory to write the configuration into")
-                        return
-                    }
-                file.writeText(text)
-                // the write is the notification: the service watches this timestamp
-                file.setLastModified(System.currentTimeMillis())
+                configFile()?.writeText(text)
             } catch (cause: Throwable) {
                 Log.e(TAG, "Could not write the configuration", cause)
             }
+
+            io.github.grachevskaya.asya.common.ServiceBridge.host?.setConfig(text)
         }
 
     val logs: String
@@ -163,49 +219,20 @@ object ServiceClient {
     val managerWorkMode: Int get() = statusValue("workMode")
 
     /**
-     * How many queries have been filtered, from the file the service writes it into.
-     *
-     * It was read out of the status file, which never contained it -- the counts live beside it, in
-     * filter_count.json, so the card said zero however much the module was doing.
+     * How many queries have been filtered: the total this side has added up, plus the increments the
+     * service has not handed over yet. The service clears what it sends, so nothing is counted twice.
      */
     val filterCount: Int get() =
-        io.github.grachevskaya.asya.common.ServiceBridge.host
-            ?.filterCount()
-            ?: try {
-                val text = serviceDir()?.let { File(it, "filter_count.json") }?.takeIf { it.isFile }?.readText() ?: ""
+        counts.totalCount + (io.github.grachevskaya.asya.common.ServiceBridge.host?.filterCount() ?: 0)
 
-                if (text.isEmpty()) {
-                    0
-                } else {
-                    FilterHolder
-                        .parse(text)
-                        .filterCounts.values
-                        .sumOf { it.totalCount }
-                }
-            } catch (cause: Throwable) {
-                Log.e(TAG, "Could not read the filter counts", cause)
-                0
-            }
-
-    /**
-     * The interception log, read from the file the service writes it into.
-     *
-     * This asked the status for it, and the status never contained it -- the same mistake the counts
-     * above were fixed for and this one was left with: the statistics arrive with the counts, in
-     * filter_count.json, so the page listed nothing while the card beside it counted everything.
-     */
-    val detailedFilterStats: String get() =
-        io.github.grachevskaya.asya.common.ServiceBridge.host
-            ?.filterStatsJson()
-            ?: try {
-                serviceDir()?.let { File(it, "filter_count.json") }?.takeIf { it.isFile }?.readText() ?: ""
-            } catch (cause: Throwable) {
-                Log.e(TAG, "Could not read the filter statistics", cause)
-                ""
-            }
+    /** The per-caller breakdown of what has been counted, as the totals this side keeps. */
+    val detailedFilterStats: String get() = counts.toString()
 
     fun clearFilterStats() {
-        Log.i(TAG, "The filter counts are the service's to clear")
+        synchronized(counts) {
+            counts = io.github.grachevskaya.asya.common.FilterHolder()
+            runCatching { countsFile()?.writeText(counts.toString()) }
+        }
     }
 
     // ---------------------------------------------------------------- the system, asked directly

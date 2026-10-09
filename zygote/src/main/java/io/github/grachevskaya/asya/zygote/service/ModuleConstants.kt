@@ -1,5 +1,7 @@
 package io.github.grachevskaya.asya.zygote.service
 
+import io.github.grachevskaya.asya.common.StatePaths
+
 /*
  * What the whole package shares: the name the module logs under, the classes the kernel is told an
  * app falls in, and the host directory whose state this module keeps together with the prefix that
@@ -23,9 +25,9 @@ internal const val ISOLATION_NATIVE = 2
  * the host's own private directory, which the host can read because the directory is its own
  * -- and whether this service can write there is answered by the log line that says so.
  */
-internal const val HOST_DATA_ROOT = "/data/data/com.android.systemui"
+internal const val HOST_DATA_ROOT = StatePaths.HOST_DATA_ROOT
 
-internal const val DIR_PREFIX = ".cache_"
+internal const val DIR_PREFIX = StatePaths.DIR_PREFIX
 
 /** The file only the host's own plugin directory holds, which tells it apart from the state one. */
 internal const val MANAGER_APK_NAME = "manager.apk"

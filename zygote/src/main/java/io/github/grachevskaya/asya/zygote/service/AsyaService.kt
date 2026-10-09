@@ -38,6 +38,7 @@ import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.isConflicting
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.ensureFileIsRW
 import java.io.File
 import kotlin.concurrent.thread
+import io.github.grachevskaya.asya.common.ServiceBridge
 
 class AsyaService(
     val pms: IPackageManager,
@@ -115,12 +116,9 @@ class AsyaService(
     override fun configJson(): String? = runCatching { config.toString() }.getOrNull()
 
     /** The manager pushed a configuration: it is applied here and written to disk for the next boot. */
+    /** The manager pushed a configuration: the service applies it and keeps it in memory. */
     override fun setConfig(json: String): Boolean =
-        runCatching {
-            // The file is for the root side; the service itself runs on what was pushed.
-            writeConfig(json)
-            applyPushedConfig(json)
-        }
+        runCatching { applyPushedConfig(json) }
             .onFailure { logE(TAG, it) { "Could not apply the pushed configuration" } }
             .isSuccess
 
@@ -129,11 +127,42 @@ class AsyaService(
     val dataHolder = AsyaServiceDataHolder()
 
     private val loggerLock = Any()
+
+    /** When the counts last left this side: they travel on the log lines' clock. */
+    @Volatile
+    private var lastCountFlush = 0L
+
+    /** The counts gathered so far leave in one document, and the ledger starts again from nothing. */
+    private fun flushFilterCounts() {
+        val binder = managerBinder ?: return
+        val taken = dataHolder.takeFilterCounts()
+        if (taken.totalCount == 0) return
+
+        runCatching { ServiceBridge.notifyFilterDeltas(binder, taken.toString()) }
+            .onFailure {
+                // The ledger goes back where it came from: the manager never saw it.
+                dataHolder.mergeFilterCounts(taken)
+                logW(TAG) { "Could not hand the counts over: $it" }
+            }
+    }
+
+    private fun countGathered() {
+        val now = System.currentTimeMillis()
+        if (now - lastCountFlush < ServiceBridge.LOG_FLUSH_PERIOD_MS) return
+
+        lastCountFlush = now
+        flushFilterCounts()
+    }
+
+    /** Guards the counts when they are cleared while a reader walks them. */
+    private val statsLock = Any()
+
+    /** The lines waiting for the next batch, and when the oldest of them arrived. */
+    private val pendingLogLines = java.util.ArrayDeque<String>()
+
+    private var pendingLogSince = 0L
     val systemApps = mutableSetOf<String>()
     private val frameworkHooks = mutableSetOf<IFrameworkHook>()
-
-    /** Built once: the count path is walked on every filtered query and must not allocate. */
-    private val filterCountWriter: () -> Unit = { writeFilterCount() }
 
     var config = JsonConfig().apply { detailLog = true }
         internal set
@@ -151,13 +180,9 @@ class AsyaService(
          * Every step is guarded: this constructor runs inside system_server, and a throw from here
          * takes the service down. A step that fails says so and the rest carries on.
          */
-        runCatching { searchDataDir() }.onFailure { logE(TAG, it) { "searchDataDir" } }
         runCatching { saveModuleStatus() }.onFailure { logE(TAG, it) { "saveModuleStatus" } }
         UserService.service = this
-
-        if (!File(ConfigStore.dataDir).isDirectory) {
-            waitForHostDirectory()
-        }
+        dataHolder.onCount = { _, _, _ -> countGathered() }
 
         if (StatusReporter.managerWorkMode != Constants.MANAGER_WORK_MODE_NO_HOOKS) {
             installHooks()
@@ -172,27 +197,6 @@ class AsyaService(
         }
 
         logI(TAG) { "Asya service initialized in mode ${StatusReporter.managerWorkMode}" }
-    }
-
-    private fun waitForHostDirectory() {
-        thread(isDaemon = true, name = "asya-service-init") {
-            repeat(150) {
-                Thread.sleep(2_000)
-
-                val dir =
-                    File(HOST_DATA_ROOT)
-                        .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
-                        ?.firstOrNull() ?: return@repeat
-
-                runCatching { searchDataDir() }
-                runCatching { saveModuleStatus() }
-
-                logI(TAG) { "The host's directory appeared: $ConfigStore.dataDir" }
-                return@thread
-            }
-
-            logE(TAG) { "The host never made its directory; the manager will show no status" }
-        }
     }
 
     /**
@@ -272,7 +276,6 @@ class AsyaService(
         callingUid,
         amount,
         FilterHolder.FilterType.PACKAGE_MANAGER,
-        filterCountWriter,
     )
 
     fun increasePMFilterCount(
@@ -282,7 +285,6 @@ class AsyaService(
         caller,
         amount,
         FilterHolder.FilterType.PACKAGE_MANAGER,
-        filterCountWriter,
     )
 
     fun increaseALFilterCount(
@@ -292,7 +294,6 @@ class AsyaService(
         caller,
         amount,
         FilterHolder.FilterType.ACTIVITY_LAUNCH,
-        filterCountWriter,
     )
 
     fun isHookEnabled(packageName: String?) = config.scope.containsKey(packageName)
@@ -388,53 +389,65 @@ class AsyaService(
 
         return true
     }
-
-    fun addLog(parsedMsg: String) {
+    /**
+     * A line the module wants kept. It reaches logcat at once and waits here for company: whole
+     * batches travel to the manager on the bridge, because one transaction per line would cost the
+     * channel more than the logging costs.
+     */
+    fun addLog(
+        parsedMsg: String,
+        urgent: Boolean = false,
+    ) {
         if (!ensureManagerWorkModeOK(true)) return
 
+        val batch: Array<String>?
         synchronized(loggerLock) {
-            if (!ModuleLogger.logcatAvailable) return
+            pendingLogLines.addLast(parsedMsg)
+            val now = System.currentTimeMillis()
+            if (pendingLogSince == 0L) pendingLogSince = now
 
-            /*
-             * A log line is never worth a crash, and this runs on a pool thread: an exception here
-             * takes system_server with it. The directory the file lives in is deleted by the
-             * manager's own clean-up -- "Remove system service cache in /data/misc/asya_*" -- and
-             * the service keeps running while it is gone, which is exactly the FileNotFoundException
-             * that was seen in the crash record. One retry rebuilds the file and the directory;
-             * anything after that is swallowed, because there is nowhere left to say it.
-             */
-            runCatching {
-                if (ModuleLogger.logFile.length() / 1024 > config.maxLogSize) clearLogs()
-                ModuleLogger.logFile.appendText(parsedMsg)
-            }.onFailure {
-                runCatching {
-                    ensureFileIsRW(ModuleLogger.logFile, true)
-                    ModuleLogger.logFile.appendText(parsedMsg)
-                }
-            }
+            val due =
+                urgent ||
+                    pendingLogLines.size >= ServiceBridge.LOG_BATCH_LINES ||
+                    now - pendingLogSince >= ServiceBridge.LOG_FLUSH_PERIOD_MS
+
+            // Nothing leaves while there is no manager to take it: the lines wait for the handshake
+            // instead of being handed to a binder that is not there.
+            batch = if (due && managerBinder != null) flushLocked() else null
         }
+
+        batch?.let { sendLogLines(it) }
     }
 
+    private fun flushLocked(): Array<String>? {
+        if (pendingLogLines.isEmpty()) return null
+
+        val lines = pendingLogLines.toTypedArray()
+        pendingLogLines.clear()
+        pendingLogSince = 0L
+
+        return lines
+    }
+
+    private fun sendLogLines(lines: Array<String>) {
+        val binder = managerBinder ?: return
+
+        runCatching { ServiceBridge.notifyLogLines(binder, lines) }
+            .onFailure { logW(TAG) { "Could not hand the log lines over: $it" } }
+    }
     /**
-     * Everything kept behind a throttle, written once more. Called from the shutdown hook, where
-     * the alternative is losing the tail of the session: the file is the only copy that outlives
-     * this process. The log is not here because it is not buffered.
+     * The shutdown hook's moment: the increments still waiting are handed over, and the total is said
+     * out loud. Nothing is written here, because nothing on this side is kept between runs.
      */
-    fun flushToDisk() {
-        runCatching { this.writeFilterCount(force = true) }
-            .onFailure { logE(TAG, it) { "Could not flush the filter count on shutdown" } }
-        logI(TAG) { "State flushed for shutdown: " + dataHolder.filterHolder.totalCount + " filtered" }
+    /** The shutdown hook's moment: whatever is gathered leaves before the process does. */
+    fun flushForShutdown() {
+        flushFilterCounts()
+
+        logI(TAG) { "Flushed for shutdown" }
     }
 
-    fun clearLogs() {
-        if (!ensureManagerWorkModeOK()) return
-
-        synchronized(loggerLock) {
-            ModuleLogger.oldLogFile.delete()
-            ModuleLogger.logFile.renameTo(ModuleLogger.oldLogFile)
-            ModuleLogger.logFile.createNewFile()
-        }
-    }
+    /** The log lines are handed to the manager as they are made, so there is nothing to clear here. */
+    fun clearLogs() = Unit
 
     /**
      * Called by the user hooks: the set of users changed, and with it the apk table.
@@ -460,7 +473,14 @@ class AsyaService(
         for (name in packageNames) {
             if (config.scope.putIfAbsent(name, default) == null) changed = true
         }
-        if (changed) writeConfig(config.toString())
+        // The defaults land in the configuration this side holds, and the manager keeps the file:
+        // it is told what changed, since no file here would ever say it.
+        if (changed) {
+            managerBinder?.let { binder ->
+                runCatching { ServiceBridge.notifyConfigChanged(binder, config.toString()) }
+            }
+            pushPolicyToKernel()
+        }
     }
 
     fun forceStop(
@@ -503,11 +523,7 @@ class AsyaService(
     fun getDetailedFilterStats() = dataHolder.filterHolder.toString()
 
     fun clearFilterStats() {
-        synchronized(ConfigStore.configLock) {
-            dataHolder.filterHolder.filterCounts.clear()
-        }
-
-        writeFilterCount(true)
+        dataHolder.clearFilterCounts()
     }
 
     fun reloadConfigFromFile() {
@@ -515,9 +531,9 @@ class AsyaService(
 
         val loading =
             runCatching {
-                assert(ConfigStore.configFile.exists())
-                val json = ConfigStore.configFile.readText()
-                JsonConfig.parse(json)
+                // The configuration arrives over the bridge: this side has no file to read.
+                config
+                return
             }.getOrElse {
                 logE(TAG, it) { "Failed to parse config.json" }
                 return

@@ -64,6 +64,37 @@ class AsyaServiceDataHolder {
         return uidPackages.putIfAbsent(uid, resolved) ?: resolved
     }
 
+    /**
+     * Takes every count gathered so far and empties the ledger: what is handed over is added to the
+     * manager's own total, so no count is ever held by both sides.
+     */
+    fun takeFilterCounts(): FilterHolder {
+        synchronized(filterCountLock) {
+            val taken = filterHolder
+            filterHolder = FilterHolder()
+
+            return taken
+        }
+    }
+
+    /** Empties the ledger a reader is shown, under the same lock every other touch takes. */
+    fun clearFilterCounts() {
+        synchronized(filterCountLock) {
+            filterHolder = FilterHolder()
+        }
+    }
+
+    /** Puts a taken ledger back: the hand that carried it did not reach the manager. */
+    fun mergeFilterCounts(taken: FilterHolder) {
+        synchronized(filterCountLock) {
+            taken.filterCounts.forEach { (caller, counts) ->
+                val kept = filterHolder.filterCounts.getOrPut(caller) { FilterHolder.FilterCount() }
+                kept.packageManagerCount += counts.packageManagerCount
+                kept.activityLaunchCount += counts.activityLaunchCount
+            }
+        }
+    }
+
     fun clearUidCache() {
         uidHideCache.clear()
         uidPackages.clear()
@@ -73,20 +104,24 @@ class AsyaServiceDataHolder {
         uid: Int?,
         amount: Int = 1,
         filterType: FilterHolder.FilterType,
-        writeFilterCount: () -> Unit,
     ) {
         if (uid == null || amount < 1) return
 
         val caller = findCallerByUid(uid) ?: return
 
-        return increaseFilterCount(caller, amount, filterType, writeFilterCount)
+        return increaseFilterCount(caller, amount, filterType)
     }
+
+    /** Told about every increment, so the manager can keep the running total itself. */
+    var onCount: (String, Int, FilterHolder.FilterType) -> Unit = { _, _, _ -> }
 
     fun increaseFilterCount(
         caller: String?,
         amount: Int = 1,
         filterType: FilterHolder.FilterType,
-        writeFilterCount: () -> Unit,
+        pushDelta: (String, Int, FilterHolder.FilterType) -> Unit = { name, count, kind ->
+            onCount(name, count, kind)
+        },
     ) {
         if (caller == null || amount < 1) return
 
@@ -99,6 +134,7 @@ class AsyaServiceDataHolder {
             }
         }
 
-        writeFilterCount()
+        pushDelta(caller, amount, filterType)
+
     }
 }

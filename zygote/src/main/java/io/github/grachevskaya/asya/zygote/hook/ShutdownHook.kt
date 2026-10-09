@@ -20,7 +20,7 @@ class ShutdownHook : IFrameworkHook {
         logI(TAG) { "Load hook" }
 
         for (method in arrayOf("shutdown", "reboot")) {
-            hooker.hookBefore(SHUTDOWN_THREAD_CLASS, method) { _, _, _ -> service.flushToDisk() }
+            hooker.hookBefore(SHUTDOWN_THREAD_CLASS, method) { _, _, _ -> service.flushForShutdown() }
             if (!hooker.isHookAvailable(SHUTDOWN_THREAD_CLASS, method)) {
                 logI(TAG) { "Not on this build: " + SHUTDOWN_THREAD_CLASS + "." + method }
             }

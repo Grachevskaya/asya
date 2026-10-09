@@ -102,7 +102,7 @@ object Logcat {
         // Appended to this module's log.
         service?.apply {
             executor.execute {
-                addLog(parsedMsg)
+                addLog(parsedMsg, urgent = level >= Log.WARN)
             }
         }
 

@@ -34,6 +34,35 @@ object ServiceBridge {
     /** The configuration, written by the manager: the one message that is a whole document. */
     internal const val CODE_CONFIG_SET = 0x00A50018
 
+    /**
+     * Log lines, batched on the way up.
+     *
+     * The service keeps its log in memory and hands whole batches over, because an application
+     * cannot read another process's logcat and a transaction per line would be one binder call per
+     * package query. The manager is the side that owns a file, so it appends what arrives.
+     */
+    internal const val CODE_LOG_LINES = 0x00A50019
+
+    /** Increments of the filter counts, so the manager accumulates them itself. */
+    internal const val CODE_FILTER_DELTA = 0x00A5001A
+
+    /**
+     * The configuration this side changed on its own -- a package that has just been installed gets
+     * its default -- so the manager, which keeps the file, hears about it.
+     */
+    internal const val CODE_CONFIG_CHANGED = 0x00A5001B
+
+    /**
+     * How many lines travel in one batch, and how long the oldest of them waits to be sent.
+     *
+     * A batch is sent when it is full, or when the flush period since the first line has passed,
+     * or at once when a line at WARN or above arrives: a batch is small enough to stay in the parcel
+     * and rare enough that the cost of the channel is not the cost of logging.
+     */
+    const val LOG_BATCH_LINES = 32
+
+    const val LOG_FLUSH_PERIOD_MS = 250L
+
     /** Markers for a payload that travels in shared memory rather than in the parcel itself. */
     internal const val PAYLOAD_BUNDLE = 0
     internal const val PAYLOAD_SHARED_MEMORY = 1
@@ -64,7 +93,11 @@ object ServiceBridge {
      */
     internal fun managerDispatch(code: Int): Int =
         when {
-            code == CODE_HELLO || code == CODE_PACKAGES_CHANGED -> DISPATCH_HANDLED
+            code == CODE_HELLO ||
+                code == CODE_PACKAGES_CHANGED ||
+                code == CODE_LOG_LINES ||
+                code == CODE_FILTER_DELTA ||
+                code == CODE_CONFIG_CHANGED -> DISPATCH_HANDLED
             code in 1..IBinder.LAST_CALL_TRANSACTION -> DISPATCH_INTERFACE
             else -> DISPATCH_UNKNOWN
         }
@@ -103,6 +136,32 @@ object ServiceBridge {
      */
     @Volatile
     var host: Host? = null
+
+    /**
+     * Where the batches of log lines go. The manager installs this: it is the side with a file, and
+     * the service keeps nothing but the lines still waiting for a batch.
+     */
+    /**
+     * Where a batch of log lines goes. It arrives as one document: every line already ends with its
+     * own newline, so what is appended verbatim is the log, and nothing is split and rejoined.
+     */
+    @Volatile
+    var logSink: ((String) -> Unit)? = null
+
+    /** Where the batches of counts go: the manager adds them to the total it keeps. */
+    @Volatile
+    var filterSink: ((String) -> Unit)? = null
+
+    /** Where a configuration the service changed itself goes: the manager keeps the file. */
+    @Volatile
+    var configSink: ((String) -> Unit)? = null
+
+    /**
+     * Called once the handshake is done. The manager keeps the configuration, so this is the moment
+     * it hands one over: the service starts empty and would otherwise hide nothing until next save.
+     */
+    @Volatile
+    var onServiceReady: (() -> Unit)? = null
 
     /** Held for as long as it is registered: a binder with no reference would be collected. */
     @Volatile
@@ -257,11 +316,40 @@ object ServiceBridge {
                 CODE_HELLO -> {
                     data.readStrongBinder()?.let { host = ServiceProxy(it) }
 
+                    onServiceReady?.invoke()
+
                     return true
                 }
 
                 CODE_PACKAGES_CHANGED -> {
                     onServiceEvent?.invoke()
+
+                    return true
+                }
+
+                CODE_FILTER_DELTA -> {
+                    val sink = filterSink
+                    val counts = data.readLargeString()
+
+                    if (sink != null && !counts.isNullOrEmpty()) sink(counts)
+
+                    return true
+                }
+
+                CODE_CONFIG_CHANGED -> {
+                    val sink = configSink
+                    val json = data.readLargeString()
+
+                    if (sink != null && !json.isNullOrEmpty()) sink(json)
+
+                    return true
+                }
+
+                CODE_LOG_LINES -> {
+                    val sink = logSink
+                    val batch = data.readLargeString()
+
+                    if (sink != null && !batch.isNullOrEmpty()) sink(batch)
 
                     return true
                 }
@@ -382,6 +470,53 @@ object ServiceBridge {
     }
 
     /** Called on the service's side: tell the manager that a transaction is over. */
+    /** A configuration this side changed itself, on its way to the manager that keeps the file. */
+    fun notifyConfigChanged(
+        manager: IBinder,
+        json: String,
+    ) {
+        val data = Parcel.obtain()
+
+        try {
+            data.writeLargeString(json)
+            manager.transact(CODE_CONFIG_CHANGED, data, null, IBinder.FLAG_ONEWAY)
+        } finally {
+            data.recycle()
+        }
+    }
+
+    /** The counts gathered so far, in the holder's own document form. */
+    fun notifyFilterDeltas(
+        manager: IBinder,
+        counts: String,
+    ) {
+        val data = Parcel.obtain()
+
+        try {
+            data.writeLargeString(counts)
+            manager.transact(CODE_FILTER_DELTA, data, null, IBinder.FLAG_ONEWAY)
+        } finally {
+            data.recycle()
+        }
+    }
+
+    /** Whole batches of log lines, so that the channel is not asked once per line. */
+    fun notifyLogLines(
+        manager: IBinder,
+        lines: Array<String>,
+    ) {
+        val data = Parcel.obtain()
+
+        try {
+            // One document instead of an array: the same payload the configuration travels in, so
+            // both ends read a batch the way they already read a config.
+            data.writeLargeString(lines.joinToString("\n"))
+            manager.transact(CODE_LOG_LINES, data, null, IBinder.FLAG_ONEWAY)
+        } finally {
+            data.recycle()
+        }
+    }
+
     fun notifyPackagesChanged(manager: IBinder) {
         val data = Parcel.obtain()
 
