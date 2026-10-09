@@ -3,9 +3,6 @@ package io.github.grachevskaya.asya.common
 import io.github.grachevskaya.asya.common.BuildConfig
 
 object Constants {
-    /**
-     * The name the service publishes itself under, for the manager that has no app to talk to.
-     */
     const val GMS_PACKAGE_NAME = "com.google.android.gms"
     const val GSF_PACKAGE_NAME = "com.google.android.gsf"
     const val VENDING_PACKAGE_NAME = "com.android.vending"

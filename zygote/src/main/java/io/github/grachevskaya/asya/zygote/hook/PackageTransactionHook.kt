@@ -32,9 +32,9 @@ class PackageTransactionHook : IFrameworkHook {
     }
 
     /**
-     * The framework moved the implementation down over the versions: InstallPackageHelper holds it
-     * and the names on PackageManagerService forward to it, so the deepest name that exists is taken
-     * and the others are left alone. Hooking a forwarder together with its target rebuilds the table
+     * The implementation sits deeper on newer builds: InstallPackageHelper holds it and the names on
+     * PackageManagerService forward to it, so the deepest name that exists is taken and the others
+     * are left alone. Hooking a forwarder together with its target rebuilds the table
      * twice for one install.
      */
     private fun hookFirstAvailableInstall(vararg candidates: Pair<String, String>) {

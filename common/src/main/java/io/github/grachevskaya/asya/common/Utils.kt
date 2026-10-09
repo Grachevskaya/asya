@@ -11,6 +11,15 @@ import io.github.grachevskaya.asya.common.CollectionUtils.removeIf
 import kotlinx.serialization.json.Json
 
 object Utils {
+    /**
+     * A random lower case hexadecimal string: a name that neither repeats nor looks made up, for the
+     * queries this module answers by pointing them at something that does not exist.
+     */
+    fun generateRandomHex(length: Int): String =
+        buildString(length) {
+            repeat(length) { append("0123456789abcdef".random()) }
+        }
+
     fun generateRandomString(
         length: Int,
         allowedChars: List<Char>,

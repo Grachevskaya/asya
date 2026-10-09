@@ -69,13 +69,9 @@ object KernelPolicy {
     private val sequence = AtomicInteger(1)
 
     /**
-     * Hands the pairs over: header, pages, commit. Returns whether the kernel took them.
+     * Begins a blob: BEGIN{kind}, BATCH{count} + records, END{}. The generation counts from 1, since
+     * 0 means "no stream" in the kernel.
      */
-
-    /**
-     * Stream generation. 0 means "no stream" in the kernel, so this counts from 1.
-     */
-    // The wire is BEGIN{kind}, BATCH{count} + records, END{}. No generation: nothing sweeps.
     private fun beginBlob(kind: Int): ByteArray =
         ByteBuffer
             .allocate(4)

@@ -18,7 +18,7 @@ abstract class PmsHookTargetBase : IFrameworkHook {
         returnValue: ReturnValue,
         findCallingUid: () -> Int?,
         findTargetApp: () -> String?,
-        findCallingApps: (IPackageManager, Int) -> Array<String>?,
+        crossinline findCallingApps: (IPackageManager, Int) -> Array<String>?,
         valueForHiding: Any?,
     ) {
         if (returnValue.throwable != null) return
@@ -35,7 +35,7 @@ abstract class PmsHookTargetBase : IFrameworkHook {
             return
         }
         val callingUserId = getUserFromCallingUid(callingUid)
-        val callingApps = findCallingApps(pms, callingUid)
+        val callingApps = dataHolder.callingAppsOf(callingUid) { findCallingApps(pms, callingUid) }
         val caller = callingApps?.firstOrNull { service.shouldHide(it, targetApp, callingUserId) }
         if (caller != null) {
             logD(TAG) { "@$methodName caller: $callingUid $caller, target: $targetApp" }

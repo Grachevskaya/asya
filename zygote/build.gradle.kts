@@ -16,6 +16,11 @@ android {
 
     defaultConfig {
         applicationId = namespace
+        buildConfigField("String", "APP_PACKAGE_NAME", "\"$appPackageName\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     sourceSets {

@@ -21,6 +21,14 @@ class AsyaServiceDataHolder {
     private val filterCountLock = Any()
     private val uidHideCache = ConcurrentHashMap<Int, Hidden>()
 
+    /**
+     * The packages a uid runs. Resolving them is a query to the package manager, and the hooks ask
+     * for them on every call, so the answer is kept until the package list changes: that is when the
+     * uid map is dropped, because both are resolved from the same list. What the answer decides --
+     * whether any of those packages is hooked -- is asked again on every call.
+     */
+    private val uidPackages = ConcurrentHashMap<Int, Array<String>>()
+
     var filterHolder = FilterHolder()
         internal set
 
@@ -43,7 +51,23 @@ class AsyaServiceDataHolder {
         uidHideCache.getOrPut(uid) { Hidden(caller) }.queries.add(query)
     }
 
-    fun clearUidCache() = uidHideCache.clear()
+    fun callingAppsOf(
+        uid: Int,
+        resolve: () -> Array<String>?,
+    ): Array<String>? {
+        uidPackages[uid]?.let { return it }
+
+        // A read that failed is not an answer: caching it would turn one bad lookup into "this uid
+        // runs nothing" until the package list changes.
+        val resolved = resolve() ?: return null
+
+        return uidPackages.putIfAbsent(uid, resolved) ?: resolved
+    }
+
+    fun clearUidCache() {
+        uidHideCache.clear()
+        uidPackages.clear()
+    }
 
     fun increaseFilterCount(
         uid: Int?,

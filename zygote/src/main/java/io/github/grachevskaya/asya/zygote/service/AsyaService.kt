@@ -90,42 +90,43 @@ class AsyaService(
 
     override fun filterStatsJson(): String? = getDetailedFilterStats()
 
-    /** Everything resolved from the package list, dropped so the next pass resolves it again. */
-    private fun invalidatePackageCaches() {
-        // The uid map is resolved from the same package list, so it goes with the model: a package
-        // that was installed, replaced or removed has a different owner than the last pass thought.
+    /**
+     * Everything resolved from the configuration, dropped so the next pass resolves it again: the
+     * uid map, the webview provider and the default browser all answer questions a new config can
+     * change.
+     */
+    private fun invalidateConfigCaches() {
         dataHolder.clearUidCache()
-        PackageModelReader.cachedPackageModel = null
         webviewProviderCache = null
         browserCache.clear()
     }
 
-    override fun configJson(): String? = runCatching { ConfigStore.configFile.takeIf { it.isFile }?.readText() }.getOrNull()
+    /**
+     * Everything resolved from the package list, dropped so the next pass resolves it again: a
+     * package that was installed, replaced or removed has a different owner than the last pass
+     * thought.
+     */
+    private fun invalidatePackageCaches() {
+        invalidateConfigCaches()
+        PackageModelReader.cachedPackageModel = null
+    }
+
+    /** The configuration this service holds, answered from memory: the file is for the root side. */
+    override fun configJson(): String? = runCatching { config.toString() }.getOrNull()
 
     /** The manager pushed a configuration: it is applied here and written to disk for the next boot. */
     override fun setConfig(json: String): Boolean =
-        runCatching { writeConfig(json) }
+        runCatching {
+            // The file is for the root side; the service itself runs on what was pushed.
+            writeConfig(json)
+            applyPushedConfig(json)
+        }
             .onFailure { logE(TAG, it) { "Could not apply the pushed configuration" } }
             .isSuccess
 
-    companion object {
-        /**
-         * The directory is named with a random tail so that it is not a fixed thing to look for, and
-         * the manager finds it by this prefix. Only names with the prefix are adopted: a bare "asya"
-         * from an older layout is not this module's to keep, and adopting it would leave the
-         * manager unable to find the directory it is supposed to read.
-         */
-
-        /**
-         * The host's own private directory, and the name this module keeps inside it. Nothing
-         * enumerates here: no service to find, no package to list.
-         */
-    }
 
     val hooker = BulkHooker()
     val dataHolder = AsyaServiceDataHolder()
-
-    private var configObserver: FileObserver? = null
 
     private val loggerLock = Any()
     val systemApps = mutableSetOf<String>()
@@ -153,9 +154,6 @@ class AsyaService(
         runCatching { searchDataDir() }.onFailure { logE(TAG, it) { "searchDataDir" } }
         runCatching { saveModuleStatus() }.onFailure { logE(TAG, it) { "saveModuleStatus" } }
         UserService.service = this
-        runCatching { loadFilterCount() }.onFailure { logE(TAG, it) { "loadFilterCount" } }
-        runCatching { loadConfig() }.onFailure { logE(TAG, it) { "loadConfig" } }
-        runCatching { watchConfigFile() }.onFailure { logE(TAG, it) { "watchConfigFile" } }
 
         if (!File(ConfigStore.dataDir).isDirectory) {
             waitForHostDirectory()
@@ -176,73 +174,6 @@ class AsyaService(
         logI(TAG) { "Asya service initialized in mode ${StatusReporter.managerWorkMode}" }
     }
 
-    /**
-     * When the manager runs where this module's app is not installed, there is no provider for this
-     * service to
-     * hand its binder to, so it also publishes itself under a name. The api, the configuration and
-     * the file are the same either way; only the handshake is different.
-     */
-
-    /**
-     * The manager and this service are not in the same process -- one shows inside a host app,
-     * the other is in system_server -- and the manager does not ask this service to do anything:
-     * it writes the configuration file. So the file is the message, and this is what delivers it.
-     * An inotify watch on the directory rather than a poll: a write, a rename over the file or a
-     * delete all arrive here the moment they happen, and none of it costs a binder.
-     *
-     * This is also the place the kernel half will be told about the new policy, once that is
-     * wired: a reload is exactly when the pairs change.
-     */
-
-    /**
-     * The kernel half wants the same decisions this service makes, as (caller, target) uids: a
-     * process whose uid is the caller must not see the target uid at all. The pairs are computed
-     * with the very function the hooks use, so the two ends cannot disagree about who hides from
-     * whom -- and a template applied to an app unrolls into its pairs here.
-     *
-     * It runs after every load, which is the moment the configuration changed. Off the calling
-     * thread, because it is socket work, and best effort: a kernel half that is not there, or one
-     * that refuses the upload, leaves the hiding exactly as it was, in this service.
-     */
-
-    /**
-     * Every (caller, target) the hiding rules say yes to, as uids, across the users this device
-     * has. Whatever this service would hide, it says here, and the kernel half answers the same
-     * question in the place the lookup is made.
-     */
-
-    /**
-     * The base.apk of every app the rules name, which is what the kernel watches.
-     *
-     * An isolated child is named from the first file of its own code that it opens, and the kernel can
-     * only watch a file it was told about. The uids come from the very pairs the policy is built from,
-     * so the two tables cannot disagree about which apps are in play -- and a template applied to an
-     * app puts its uid into those pairs, which is what makes the app's apk watchable.
-     */
-
-    /**
-     *
-     */
-
-    /**
-     *
-     *
-     */
-
-    /**
-     *
-     *
-     *
-     */
-
-    /**
-     * Waits for the host to make the shared directory.
-     *
-     * The host makes it the first time it starts after a boot, which can be long after this service
-     * has started -- and until it does, there is nowhere to keep the status. This looks again every
-     * couple of seconds, and when the directory appears it writes the status into it and picks up
-     * whatever configuration is there.
-     */
     private fun waitForHostDirectory() {
         thread(isDaemon = true, name = "asya-service-init") {
             repeat(150) {
@@ -254,8 +185,6 @@ class AsyaService(
                         ?.firstOrNull() ?: return@repeat
 
                 runCatching { searchDataDir() }
-                runCatching { loadConfig() }
-                runCatching { watchConfigFile() }
                 runCatching { saveModuleStatus() }
 
                 logI(TAG) { "The host's directory appeared: $ConfigStore.dataDir" }
@@ -266,89 +195,31 @@ class AsyaService(
         }
     }
 
-    private fun watchConfigFile() {
-        val dir = ConfigStore.configFile.parentFile ?: return
-        val name = ConfigStore.configFile.name
-
-        val observer =
-            object : FileObserver(
-                dir,
-                CREATE or MOVED_TO or CLOSE_WRITE or DELETE or ATTRIB,
-            ) {
-                override fun onEvent(
-                    event: Int,
-                    path: String?,
-                ) {
-                    if (path != name) return
-
-                    logI(TAG) { "The configuration changed on disk, reloading" }
-                    try {
-                        loadConfig()
-                    } catch (cause: Throwable) {
-                        logW(TAG, cause) { "Could not reload the configuration" }
-                    }
-                }
-            }
-
-        observer.startWatching()
-        configObserver = observer
-    }
-
-    private fun loadConfig() {
-        // remove the old filter count
-        File("$ConfigStore.dataDir/filter_count").also {
-            try {
-                if (it.exists()) it.delete()
-            } catch (cause: Throwable) {
-                logW(TAG, cause) { "Failed to delete filter count, skip it" }
-            }
-        }
-
-        if (!ConfigStore.configFile.exists()) {
-            logI(TAG) { "Config file not found" }
-            return
-        }
-
+    /**
+     * The configuration as the manager pushed it. Nothing here is read from disk: the host hands the
+     * document over on the bridge, and the file is written only for the root side to read.
+     */
+    private fun applyPushedConfig(json: String) {
         val loading =
-            try {
-                val json = ConfigStore.configFile.readText()
-                JsonConfig.parse(json)
-            } catch (cause: Throwable) {
-                logW(TAG, cause) { "Failed to parse config json, skip it" }
-
-                config
-            }
+            runCatching { JsonConfig.parse(json) }
+                .getOrElse {
+                    logW(TAG, it) { "Could not parse the pushed configuration" }
+                    return
+                }
 
         if (loading.configVersion != BuildConfig.CONFIG_VERSION) {
             logW(TAG) { "Config version mismatch, need to reload" }
             return
         }
 
-        if (config != loading) {
-            loading.cleanRemnantsFromConfig()
-            config = loading
-        }
+        loading.cleanRemnantsFromConfig()
+        config = loading
 
+        // The configuration is what the caches answer for, and the pass that follows is what the
+        // kernel hears: a pushed configuration is applied here and nowhere else.
+        invalidateConfigCaches()
         pushPolicyToKernel()
-
         logI(TAG) { "Config loaded" }
-    }
-
-    private fun loadFilterCount() {
-        if (!ConfigStore.filterCountFile.exists()) {
-            logI(TAG) { "Filter count file not found" }
-            return
-        }
-        val loading =
-            runCatching {
-                val json = ConfigStore.filterCountFile.readText()
-                FilterHolder.parse(json)
-            }.getOrElse {
-                logE(TAG, it) { "Failed to parse filter count" }
-                return
-            }
-        dataHolder.filterHolder = loading
-        logI(TAG) { "Filter counts loaded" }
     }
 
     private fun installHooks() {
@@ -446,9 +317,8 @@ class AsyaService(
         if (config.webViewProtection) {
             /*
              * Both answers are the same for every pair in a pass, and both cost a package
-             * manager query. Resolving them here meant 508 targets times every caller, twice,
-             * which is the four seconds "Policy computed" was taking. Cached per user, cleared
-             * whenever the configuration is reloaded.
+             * manager query: asking per pair is five hundred targets times every caller, twice.
+             * Cached per user, cleared whenever the configuration is reloaded.
              */
             val webviewProvider = cachedWebviewProvider()
             if (webviewProvider == caller || webviewProvider == query) return false
@@ -580,9 +450,8 @@ class AsyaService(
     /**
      * The default config, for packages that have just been installed.
      *
-     * This arrived with the install broadcast until the broadcast hook was removed; now the install
-     * transaction is the only install event there is, and it is the one that knows what was
-     * installed. A package that already has a config keeps it, and an upgrade is not a new package.
+     * The install transaction is the install event: it is the one that knows what was installed.
+     * A package that already has a config keeps it, and an upgrade is not a new package.
      */
     fun applyDefaultConfigTo(packageNames: List<String>) {
         val default = config.defaultConfig ?: return

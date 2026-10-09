@@ -6,7 +6,7 @@ class RiskyPackageUtils private constructor() {
     }
 
     // Apps that connect to play services without declaring it in their manifest. The list is the
-    // whole check now: the manifest readers went away with the presets, so the entry is explicit.
+    // whole check: an entry here is what marks such an app.
     private val explicitlyIgnoredPackages =
         arrayOf(
             "com.anydesk.anydeskandroid",

@@ -73,8 +73,13 @@ class ActivityHook : IFrameworkHook {
                 if (callingUid == Constants.UID_SYSTEM) return@hookAfter
 
                 val callingUserId = getUserFromCallingUid(callingUid)
-                val callingApps = getCallingApps(pms, callingUid)
-                val caller = callingApps.firstOrNull { service.isHookEnabled(it) }
+
+                // The packages of a uid come from the package manager, and this runs on every
+                // resolution, so the holder keeps them until the package list changes.
+                val caller =
+                    dataHolder
+                        .callingAppsOf(callingUid) { getCallingApps(pms, callingUid) }
+                        ?.firstOrNull { service.isHookEnabled(it) }
                 if (caller != null) {
                     logV(TAG) { "@$methodName: $caller requested a resolve info" }
 

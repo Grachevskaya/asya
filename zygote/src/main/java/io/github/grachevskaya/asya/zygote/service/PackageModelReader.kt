@@ -59,7 +59,6 @@ internal fun AsyaService.packageModel(): Map<*, *>? {
  * the string -- for the package and for each service. Anything unreadable returns null
  * and the caller falls back to every .so of the app.
  */
-
 internal fun AsyaService.declaredNativeLibNames(packageName: String): Set<String>? =
     runCatching {
         val packages = packageModel() ?: return@runCatching null
@@ -158,10 +157,7 @@ internal fun AsyaService.declaredNativeLibNames(packageName: String): Set<String
         null
     }.getOrNull()
 
-/**
- *
- */
-
+/** The native library the package asks to be preloaded into zygote, if it declares one. */
 internal fun AsyaService.appNativePreloadLib(app: ApplicationInfo): String? =
     runCatching {
         val field = ApplicationInfo::class.java.getField("zygotePreloadNativeLib")

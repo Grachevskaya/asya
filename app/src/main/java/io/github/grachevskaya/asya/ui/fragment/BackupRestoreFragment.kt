@@ -46,21 +46,14 @@ private const val APPEND = "append"
 /*
  * Backing up and restoring the configuration.
  *
- * The page is a preferences screen, like the other sub pages of the settings: the rows, their group
- * surfaces and the switches come from the same theme the rest of the manager uses, which is where
- * the shape of a row lives rather than in this file.
- */
-/*
- * Backing up and restoring the configuration.
- *
- * The two directions are two pages, not one page with a mode: what is being chosen and what is
- * being done to the destination are different questions, and a page that asks both has to explain
- * itself twice. This /** The two answers a restore row can carry. */
-private const val OVERWRITE = "overwrite"
-private const val APPEND = "append"
-
-class holds what the two pages share; the two pages below are the classes the
+ * The two directions are two pages, not one page with a mode: what is being chosen and what is being
+ * done to the destination are different questions, and a page that asks both has to explain itself
+ * twice. This class holds what the two pages share; the two pages themselves are the classes the
  * navigation graph names.
+ *
+ * They are preferences screens, like the other sub pages of the settings: the rows, their group
+ * surfaces and the switches come from the same theme the rest of the manager uses, which is where the
+ * shape of a row lives rather than in this file.
  */
 abstract class BackupRestoreFragment : PreferenceFragmentCompat() {
     protected abstract val isBackupMode: Boolean

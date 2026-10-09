@@ -7,10 +7,8 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 /**
  * The service, for the hooks to reach, and the one place the system side is started.
  *
- * Upstream also watches for the manager app's uid to come up and hands it a binder through the app's
- * own content provider. This fork has no installed app to hand anything to -- the manager reads the
- * same files this service writes -- so what is left of that arrangement is the registration itself,
- * which is the name the system side calls.
+ * The manager is not an installed app: it reads the same files this service writes, so the
+ * registration itself is what the system side calls by name.
  */
 object UserService {
     private const val TAG = "Asya-UserService"

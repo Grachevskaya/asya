@@ -63,8 +63,9 @@ object ZLUtils {
     /**
      * - `index == 0: thisObject`
      * - `index >= 1: function args`
+     *
+     * Reference slots may legitimately contain null; primitive slots still return boxed values.
      */
-    // Reference slots may legitimately contain null; primitive slots still return boxed values.
     fun EmulatedStackFrame.getArgument(index: Int): Any? {
         val accessor = accessor()
 

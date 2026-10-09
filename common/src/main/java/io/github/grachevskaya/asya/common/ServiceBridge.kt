@@ -114,10 +114,9 @@ object ServiceBridge {
     /**
      * Puts the bridge in place from the manager’s side.
      *
-     * The bridge used to ride on a registration the host process makes for itself, and whether the
-     * host makes one, and when, is the host’s business rather than this module’s: on this build it
-     * does not, so the module registers its own observer instead. It needs no permission for that,
-     * and the object it registers is the one the service’s handshake is answered by.
+     * Whether the host process registers an observer of its own, and when, is the host’s business
+     * rather than this module’s. This module registers its own, which needs no permission, and the
+     * object it registers is the one the service’s handshake is answered by.
      */
     fun registerManagerObserver() {
         if (managerRegistered) return

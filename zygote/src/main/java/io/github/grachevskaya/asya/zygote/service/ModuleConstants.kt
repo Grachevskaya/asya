@@ -15,9 +15,8 @@ internal const val ISOLATION_APP = 1
 internal const val ISOLATION_NATIVE = 2
 
 /**
- * Where the state lives: a random name under /data/misc, which is upstream's arrangement and
- * the one that works -- the service has written here since the Zygisk rewrite, and the tail
- * is random so that the name is not a fixed thing to look for.
+ * Where the state lives: a random name under /data/misc, whose tail is random so that the name
+ * is not a fixed thing to look for.
  *
  * The manager cannot read it: it is an activity of the host process, whose domain is denied
  * the system_data_file type that /data/misc carries. So the status is mirrored to one file in
@@ -27,3 +26,6 @@ internal const val ISOLATION_NATIVE = 2
 internal const val HOST_DATA_ROOT = "/data/data/com.android.systemui"
 
 internal const val DIR_PREFIX = ".cache_"
+
+/** The file only the host's own plugin directory holds, which tells it apart from the state one. */
+internal const val MANAGER_APK_NAME = "manager.apk"

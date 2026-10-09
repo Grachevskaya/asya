@@ -67,7 +67,7 @@ object SystemServerHook {
                 return
             } catch (cause: Throwable) {
                 logE(TAG, cause) { "An exception occurred while trying 12+ mode" }
-                // falls back to 11- mode
+                // Falls back to the route older builds take.
             }
         }
 

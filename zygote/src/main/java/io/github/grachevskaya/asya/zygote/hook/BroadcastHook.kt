@@ -1,17 +1,16 @@
 package io.github.grachevskaya.asya.zygote.hook
 
 import android.content.ComponentName
-import android.content.IIntentReceiver
 import android.content.Intent
 import android.os.Build
-import android.os.Bundle
 import com.v7878.unsafe.invoke.EmulatedStackFrame
+import io.github.grachevskaya.asya.common.Utils.generateRandomHex
+import io.github.grachevskaya.asya.zygote.BuildConfig
 import io.github.grachevskaya.asya.zygote.service.ReturnValue
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.firstReferenceArgument
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
-import io.github.grachevskaya.asya.zygote.util.ZLUtils.getBooleanField
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getIntField
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getObjectField
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.ACTION_USB_STATE
@@ -90,26 +89,13 @@ class BroadcastHook : IFrameworkHook {
 
         if (service.shouldHideActivityLaunch(caller, targetApp, userId)) {
             logD(TAG) { "@$methodName: insecure query from $caller, target: $component" }
-            returnValue.result = null
-
-            val resultTo = getObjectField(record, "resultTo") as? IIntentReceiver
-            val haveATarget =
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    true // getObjectField(record, "callerApp") != null
-                } else {
-                    getObjectField(record, "resultToApp") != null
-                }
-
-            if (resultTo != null && haveATarget) {
-                resultTo.performReceive(
-                    getObjectField(record, "intent") as Intent,
-                    getIntField(record, "resultCode"),
-                    getObjectField(record, "resultData") as? String,
-                    getObjectField(record, "resultExtras") as? Bundle,
-                    getBooleanField(record, "ordered"),
-                    getBooleanField(record, "sticky"),
-                    userId,
-                )
+            // The query is answered by pointing it at something that does not exist, so the caller
+            // hears "nothing" from the system itself. Calling back into the caller's IIntentReceiver
+            // would answer from this process instead of the system one, which is a fingerprint of its
+            // own, and would need the hidden interface to be stubbed out.
+            (getObjectField(record, "intent") as Intent).apply {
+                this.component = null
+                `package` = "${BuildConfig.APP_PACKAGE_NAME}.${generateRandomHex(4)}"
             }
 
             service.increaseALFilterCount(caller)

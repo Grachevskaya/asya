@@ -65,16 +65,6 @@ object ServiceUtils {
         } ?: arrayOf()
     }
 
-    /**
-     * There is no manager app to verify.
-     *
-     * Upstream looks the manager up in the package manager and compares its signing certificate with
-     * the one compiled into this module, because the service there hands it a binder and has to know
-     * who it is talking to. This fork's manager is not an installed app at all -- it is an activity
-     * of the host process, reading the same files this service writes -- so there is no identity to
-     * check and nothing to compare. The value returned is the one upstream uses for "no manager".
-     */
-
     fun clearStackTraces(throwableIn: Throwable?) {
         var throwable: Throwable? = throwableIn
 

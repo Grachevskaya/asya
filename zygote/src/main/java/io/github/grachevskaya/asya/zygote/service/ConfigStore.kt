@@ -37,10 +37,16 @@ import kotlin.io.path.Path
 
 internal fun AsyaService.searchDataDir() {
     val root = File(HOST_DATA_ROOT)
+
+    // The host's own plugin directory carries this prefix as well, and it holds the manager apk:
+    // a candidate that has one is not the state directory. Of the rest the newest is the one the
+    // manager is writing to, which is the one a service that started again has to join.
     val dir =
         root
             .listFiles { file -> file.isDirectory && file.name.startsWith(DIR_PREFIX) }
-            ?.firstOrNull()
+            ?.filterNot { candidate ->
+                candidate.listFiles()?.any { child -> child.name == MANAGER_APK_NAME } == true
+            }?.maxByOrNull { it.lastModified() }
             ?: File(root, DIR_PREFIX + generateRandomString(16, ('a'..'z').toList())).apply {
                 mkdirs()
                 logI(TAG) { "Made the state directory: $path" }
