@@ -96,9 +96,10 @@ jobs:
       file_id6: ${{ steps.write.outputs.file_id6 }}
       file_id7: ${{ steps.write.outputs.file_id7 }}
       file_id8: ${{ steps.write.outputs.file_id8 }}
-    container:
-      image: ghcr.io/ylarod/ddk:${{ matrix.kmi }}-20260828
-      options: --privileged
+    # No container: line on purpose. The image is pulled before any step runs, and on this runner the
+    # disk is already more than half full by then, which is where a release of the bigger KMIs died --
+    # registering the image's layers ran out of space. Here the disk is cleared first, then the image
+    # is pulled once, then the build runs inside it.
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +113,25 @@ jobs:
           - {kmi: android16-6.12, clang: clang-r536225, slot: 7}
           - {kmi: android17-6.18, clang: clang-r584948c, slot: 8}
     steps:
+      - name: Free the disk
+        run: |
+          set -euo pipefail
+          df -h / | sed 's/^/before: /'
+          sudo rm -rf /usr/lib/jvm /usr/share/dotnet /usr/share/swift /usr/local/.ghcup \
+                      /usr/local/julia* /usr/local/lib/android /usr/local/share/chromium \
+                      /opt/microsoft /opt/google /opt/az /usr/local/share/powershell \
+                      /opt/hostedtoolcache /opt/ghc
+          sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* 2>/dev/null || true
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h / | sed 's/^/after:  /'
+      - name: Pull the DDK image, once
+        env:
+          KMI: ${{ matrix.kmi }}
+        run: |
+          set -euo pipefail
+          # One attempt on purpose: a retry of a multi-gigabyte layer set is what filled the disk.
+          timeout 1800 docker pull "ghcr.io/ylarod/ddk:${KMI}-20260828"
+          df -h / | sed 's/^/after pull: /'
       - uses: actions/checkout@v7
         with:
           repository: ${{ vars.KERNEL_REPO }}
@@ -122,16 +142,21 @@ jobs:
           fetch-depth: 0
           submodules: recursive
       - name: Build
+        env:
+          KMI: ${{ matrix.kmi }}
+          CLANG: ${{ matrix.clang }}
         run: |
           set -euo pipefail
           [ -n "${{ vars.KERNEL_REPO }}" ] || { echo "set the KERNEL_REPO variable to owner/name"; exit 1; }
-          cd tosya
-          TOSYA_KBUILD_JOBS="$(nproc)" bash scripts/build-kmi.sh \
-            "${{ matrix.kmi }}" "${{ matrix.clang }}" \
-            "$RUNNER_TEMP/stage/${{ matrix.kmi }}" \
-            "$GITHUB_WORKSPACE/out/${{ matrix.kmi }}_arm64_tosya.ko"
-          NM="/opt/ddk/clang/${{ matrix.clang }}/bin/llvm-nm" \
-            bash scripts/check-undefined.sh "$GITHUB_WORKSPACE/out"/*.ko
+          docker run --rm --privileged \
+            -v "$GITHUB_WORKSPACE:/w" -w /w/tosya \
+            -e KMI -e CLANG -e TOSYA_KBUILD_JOBS="$(nproc)" \
+            "ghcr.io/ylarod/ddk:${KMI}-20260828" bash -c '
+              set -euo pipefail
+              bash scripts/build-kmi.sh "$KMI" "$CLANG" "/w/.stage/$KMI" "/w/out/${KMI}_arm64_tosya.ko"
+              NM="/opt/ddk/clang/$CLANG/bin/llvm-nm" bash scripts/check-undefined.sh /w/out/*.ko
+            '
+          df -h / | sed 's/^/after build: /'
       - name: Write this ko into its slot
         id: write
         env:
