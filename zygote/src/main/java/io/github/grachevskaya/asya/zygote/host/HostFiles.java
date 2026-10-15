@@ -16,6 +16,7 @@ public final class HostFiles {
     private static FileDescriptor apkDescriptor;
     private static String apkPath;
     private static String token;
+    private static java.util.List<java.io.RandomAccessFile> heldState;
 
     /** The reported directory is there for the first process only; later forks inherit a cleared field. */
     public static void takeFromModuleDirectory(String moduleDir) {
@@ -27,17 +28,13 @@ public final class HostFiles {
 
             File apk = new File(moduleDir, io.github.grachevskaya.asya.common.StatePaths.MANAGER_APK_NAME);
 
-            // ART finds an oat only through a real path: <apk>/oat/<isa>/manager.odex, and a
-            // /proc/self/fd path has no directory to look in. The descriptor is the fallback.
-            String real = realManagerApkPath();
-            if (real != null) {
-                apkPath = real;
-            } else {
-                FileInputStream stream = new FileInputStream(apk);
-                apkDescriptor = stream.getFD();
-                openedApk = stream;
-                apkPath = "/proc/self/fd/" + descriptorNumber(stream);
-            }
+            // The host opens this path itself: /proc/self/fd/<n> is a path it may open, and the
+            // permission that matters is the one on the file, which the module sets for it.
+            File beside = openManagerApk();
+            FileInputStream stream = new FileInputStream(beside != null ? beside : apk);
+            apkDescriptor = stream.getFD();
+            openedApk = stream;
+            apkPath = "/proc/self/fd/" + descriptorNumber(stream);
         } catch (Throwable ignored) {
             return;
         }
@@ -55,6 +52,13 @@ public final class HostFiles {
         }
     }
 
+    /*
+     * The state beside the module is not opened here. Its directory is root-only and stays that way,
+     * and a descriptor in this process would be inherited by every app forked from it -- a way to
+     * read what the module keeps, handed to anything that can list its own descriptors. The service
+     * reaches that state through the kernel instead, which is the only other side that is allowed in.
+     */
+
     /** Held so the descriptor underneath it stays open for the life of the process. */
     private static FileInputStream openedApk;
 
@@ -66,14 +70,16 @@ public final class HostFiles {
         return token;
     }
 
-    /** The manager apk as this host's own state directory holds it, or null when it is not there. */
-    private static String realManagerApkPath() {
+    /**
+     * The manager apk, opened while this process is still root. Nothing reads it by name afterwards:
+     * the host cannot read under /data/adb, and there is no second copy anywhere -- what is carried
+     * across the specialization is the descriptor.
+     */
+    private static File openManagerApk() {
         try {
-            java.io.File directory = io.github.grachevskaya.asya.common.StatePaths.INSTANCE.stateDirOrNull();
-            if (directory == null) return null;
-
-            File apk = new File(directory, "manager.apk");
-            return apk.isFile() ? apk.getAbsolutePath() : null;
+            File apk = new File(io.github.grachevskaya.asya.common.StatePaths.MODULE_STATE_ROOT, "manager.apk");
+            if (!apk.isFile()) return null;
+            return apk;
         } catch (Throwable ignored) {
             return null;
         }

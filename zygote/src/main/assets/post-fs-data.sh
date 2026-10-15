@@ -5,6 +5,24 @@ MODDIR=${0%/*}
 LOG="$MODDIR/state/sync.log"
 mkdir -p "$MODDIR/state"
 
+# Everything this module keeps for itself lives here, beside the module and not in the host's data
+# directory: /data/adb is decrypted long before the user's storage is, so a boot has the rules from
+# its first moment. The service runs as the system user, so the directory and the files in it are
+# writable by it as well as by root.
+mkdir -p /data/adb/asya
+chown 0:0 /data/adb/asya 2>/dev/null
+chmod 0700 /data/adb/asya 2>/dev/null
+# The manager apk lives here too, and the host never reads it by path: the loader opens it while it
+# is still root and hands the descriptor to the process that will show it.
+[ -f "$MODDIR/manager.apk" ] && cp -f "$MODDIR/manager.apk" /data/adb/asya/manager.apk 2>/dev/null
+[ -f /data/adb/asya/manager.apk ] && chmod 0600 /data/adb/asya/manager.apk 2>/dev/null
+
+for f in config.json native_libs.json runtime.log filter_counts.json; do
+  [ -f "/data/adb/asya/$f" ] || : > "/data/adb/asya/$f" 2>/dev/null
+  chown 0:0 "/data/adb/asya/$f" 2>/dev/null
+  chmod 0600 "/data/adb/asya/$f" 2>/dev/null
+done
+
 # What the service worked out last time about the apps' libraries, and what it will add to. It is
 # read before the user's storage is decrypted, so it has to be writable by the service (system) and
 # not only by root.

@@ -21,8 +21,6 @@ TOKEN=$(cat "$TOKEN_FILE")
 # The host reads the manager out of its own state directory: the copy and its oat are made by the
 # installer, and remade here when something has taken them away since -- a wiped host, a package
 # that was flashed without the installer's hooks.
-. "$MODDIR/prep-manager.sh"
-prep_manager "$MODDIR"
 
 for user in $(pm list users | cut -f1 -d: | cut -f2 -d{ | tail -n +2); do
   [ "$user" = "999" ] && continue

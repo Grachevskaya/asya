@@ -4,11 +4,16 @@ import android.util.Log
 import java.io.File
 
 /*
- * Where the manager keeps what it shares with the service, named once. The manager is the only side
- * that touches the disk: it runs in the host's process, and the host's data directory is the one
- * place it has. The name is neutral, so it says nothing about this module.
+ * Where the module keeps what it shares with its two halves, named once.
+ *
+ * The first choice is beside the module, on storage that is decrypted before the user's is: a boot
+ * has the rules and the counters from its first moment instead of waiting for the unlock that the
+ * host's data directory needs. The service reads and writes there; the manager reaches the same
+ * files. The host's directory is the fallback, for a module whose own state directory is not there.
  */
 object StatePaths {
+    const val MODULE_STATE_ROOT = "/data/adb/asya"
+
     const val HOST_DATA_ROOT = "/data/data/com.android.systemui"
 
     const val DIR_PREFIX = ".cache_"
@@ -16,29 +21,31 @@ object StatePaths {
     const val FILTER_COUNTS = "filter_counts.json"
 
     const val CONFIG_NAME = "config.json"
+
+    const val NATIVE_LIBS_NAME = "native_libs.json"
+
+
     const val MANAGER_APK_NAME = "manager.apk"
 
     const val LOG_NAME = "runtime.log"
 
     private const val TAG = "StatePaths"
 
+    /** The module's own directory, when it is there. Null is "not now", never "nowhere". */
+    fun moduleStateDirOrNull(): File? =
+        runCatching { File(MODULE_STATE_ROOT) }.getOrNull()?.let { if (it.isDirectory) it else null }
+
     /**
-     * The state directory, or null while the host's data directory cannot be read.
+     * The state directory, or null while neither place can be used.
      *
      * Null is not "there is no state": before the user's storage is mounted, the directory that holds
      * it does not exist at all, and a name made up in that window -- together with a mkdirs whose
      * failure was never asked about -- is how the manager came to read a configuration out of a place
      * nothing had ever written. Every caller treats null as "not now" and asks again when it is.
-     *
-     * Nothing here is fixed in the source: a name written down is a name anyone holding this module
-     * could look for. It does not have to be, either, because there is only ever one such directory to
-     * find, and finding it is the whole of what this does.
-     *
-     * Asked at the right time -- the wait for the user's unlock is what makes it the right time --
-     * there are two outcomes, and null is neither of them: a directory that was found, or one that was
-     * made here and now. A null therefore means the wait was not respected, and says so in the log.
      */
     fun stateDirOrNull(): File? {
+        moduleStateDirOrNull()?.let { return it }
+
         val root = File(HOST_DATA_ROOT)
 
         // A root that cannot be listed is one that is not there yet, or not ours to read. Either way

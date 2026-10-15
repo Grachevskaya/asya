@@ -26,17 +26,16 @@ object ServiceClient {
         io.github.grachevskaya.asya.common
             .FilterHolder()
 
-    /** Where the totals live between runs: the manager is the side that keeps them. */
-    private fun countsFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS) }
+    /* The totals live with the service, which has them before this side is even awake. */
 
     init {
         // The totals have to survive the manager being restarted, so a read that fails is said out
         // loud: an empty ledger and a ledger that could not be read look the same on the screen.
         val kept: String? =
             try {
-                countsFile()?.takeIf { it.isFile }?.readText()
+                io.github.grachevskaya.asya.common.ServiceBridge.host?.filterStatsJson()
             } catch (cause: Throwable) {
-                Log.e(TAG, "Could not read the totals kept between runs", cause)
+                Log.e(TAG, "Could not read the totals from the service", cause)
                 null
             }
 
@@ -139,25 +138,18 @@ object ServiceClient {
             }
         }
 
-        // Posted, so the write lands after the answer the service waits for before clearing its ledger.
-        android.os.Handler(android.os.Looper.getMainLooper()).post { persistCounts() }
     }
 
-    /** Writes the totals as they stand, off the binder thread that took them. */
-    private fun persistCounts() {
-        try {
-            countsFile()?.writeText(synchronized(counts) { counts.toString() })
-        } catch (cause: Throwable) {
-            Log.e(TAG, "Could not write the totals out", cause)
-        }
-    }
+
+    /** The lines the service hands over, kept here for the page: the file belongs to the service. */
+    private val logLines = StringBuilder()
 
     private fun appendLogLines(batch: String) {
         try {
-            val file = logFile() ?: return
-
-            file.parentFile?.mkdirs()
-            file.appendText(batch)
+            synchronized(logLines) {
+                logLines.append(batch)
+                if (logLines.length > 64 * 1024) logLines.delete(0, logLines.length - 64 * 1024)
+            }
         } catch (cause: Throwable) {
             Log.e(TAG, "Could not append the log lines", cause)
         }
@@ -172,7 +164,6 @@ object ServiceClient {
 
     private fun configFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.CONFIG_NAME) }
 
-    private fun logFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.LOG_NAME) }
 
     /** The kernel's own answer, held by the service and handed over the bridge. */
     val kernelStatus: Map<String, String> get() =
@@ -206,19 +197,22 @@ object ServiceClient {
         get() {
             heldConfig?.let { return it }
 
-            val file = configFile() ?: return null
-            val loaded =
+            /*
+             * The service is the side that holds the configuration: it has it before the user's
+             * storage is readable, and it is the side that writes it back. Nothing here reads a file.
+             */
+            val fromService =
                 try {
-                    if (file.isFile) file.readText() else "{}"
+                    io.github.grachevskaya.asya.common.ServiceBridge.host?.configJson()
                 } catch (cause: Throwable) {
-                    Log.e(TAG, "Could not read the configuration", cause)
+                    Log.e(TAG, "Could not read the configuration from the service", cause)
 
                     return null
                 }
 
-            heldConfig = loaded
+            if (fromService != null) heldConfig = fromService
 
-            return loaded
+            return fromService
         }
 
     /**
@@ -241,49 +235,33 @@ object ServiceClient {
                 " caller(s)",
         )
 
+        /* Handed over, not written: the service keeps it beside the module. */
         io.github.grachevskaya.asya.common.ServiceBridge.host
             ?.setConfig(text)
-
-        val file = configFile()
-        if (file == null) {
-            Log.w(TAG, "The storage is not readable yet; the configuration is held in memory only")
-
-            return
-        }
-
-        try {
-            file.writeText(text)
-        } catch (cause: Throwable) {
-            Log.e(TAG, "Could not write the configuration", cause)
-        }
     }
 
     val logs: String
         get() =
             try {
-                logFile()?.takeIf { it.isFile }?.readText()?.takeLast(64 * 1024) ?: ""
+                synchronized(logLines) { logLines.toString() }
             } catch (_: Throwable) {
                 ""
             }
 
-    val logFileLocation: String get() = logFile()?.absolutePath ?: "(the service has not started)"
+    val logFileLocation: String get() = "(kept by the service)"
 
-    fun clearLogs() =
-        try {
-            logFile()?.writeText("")
-        } catch (cause: Throwable) {
-            Log.e(TAG, "Could not clear the log", cause)
-        }
+    fun clearLogs() {
+        synchronized(logLines) { logLines.setLength(0) }
+    }
 
     fun log(
         level: Int,
         tag: String,
         message: String,
-    ) = try {
-        logFile()?.appendText("$level\t$tag\t$message\n")
-    } catch (cause: Throwable) {
-        // Not logged into the same file that refused the write; the system log is the fallback.
-        Log.e(TAG, "Could not append the log line", cause)
+    ) {
+        synchronized(logLines) {
+            logLines.append(level).append('\t').append(tag).append('\t').append(message).append('\n')
+        }
     }
 
     // ---------------------------------------------------------------- what the service reports
@@ -311,7 +289,6 @@ object ServiceClient {
             counts =
                 io.github.grachevskaya.asya.common
                     .FilterHolder()
-            runCatching { countsFile()?.writeText(counts.toString()) }
         }
 
         // The service still holds what it has not handed over: a reset has to reach that too, or

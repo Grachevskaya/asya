@@ -60,9 +60,8 @@ public final class ManagerApk {
     }
 
     /**
-     * The host cannot read under /data/adb -- a PathClassLoader over a path it cannot open comes up
-     * with an empty DexPathList -- so the installer leaves a copy where a system process can read it,
-     * and that copy is what is loaded.
+     * A descriptor the loader opened while it was still root: the host cannot read under /data/adb,
+     * and nothing of this module is left anywhere else for it to read instead.
      */
     private static String managerApkPath() {
         return HostFiles.apkPath();
