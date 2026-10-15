@@ -7,6 +7,12 @@ mkdir -p "$MODDIR/state"
 . "$MODDIR/load.sh"
 tosya_load "$MODDIR" >>"$LOG" 2>&1
 
-# The manager apk and its oat are not this stage's business: the installer puts them together
-# (customize.d/60-prepare-manager.sh), and the action button does it when it is needed. Doing it
-# here would put a compiler between this boot and the lockscreen.
+# The state beside the module is served by a process of its own, started here as root through the
+# module's own dex. It shares nothing with the zygote, so what it reads is on no heap an application
+# inherits.
+if [ -f "$MODDIR/classes.dex" ]; then
+  CLASSPATH="$MODDIR/classes.dex" app_process /system/bin \
+    io.github.grachevskaya.asya.zygote.service.StateDaemon >>"$LOG" 2>&1 &
+fi
+
+# The manager apk and its oat are not this stage's business: the installer puts them together.

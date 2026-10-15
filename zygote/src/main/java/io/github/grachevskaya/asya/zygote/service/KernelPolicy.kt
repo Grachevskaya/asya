@@ -8,21 +8,22 @@ import io.github.grachevskaya.asya.zygote.service.KernelConstants.YIELD_BATCH_SI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logE
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
+import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import java.io.FileDescriptor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicInteger
 
 /*
- * The service's end of the kernel half's wire: a stream of records, committed at the end, so a
- * half-applied table cannot happen. Everything here is best effort -- the userspace hooks hide
- * whether or not the kernel half is loaded -- and a failure says so in the log.
+ * Policy tables replace at END; APK records apply incrementally and END reports any refusal.
+ * Only a successful END advances the userspace ledger. Separate processes share the kernel
+ * channel, whose BEGIN/BATCH/END owner is the netlink port, not this object monitor.
  */
 object KernelPolicy {
     private const val TAG = "KernelPolicy"
 
     private const val FAMILY_NAME = "tosya"
-    private const val FAMILY_VERSION = 5
+    private const val FAMILY_VERSION = 6
 
     // Streaming (kaux.h): BEGIN opens a stream, BATCH carries records, END makes it current.
     private const val CMD_BEGIN = 2
@@ -38,6 +39,11 @@ object KernelPolicy {
     private const val STATUS_MAGIC = 0x7875616b
     private const val KIND_POLICY = 0
     private const val KIND_APKS = 1
+
+    // The hidden names, for the cleanup the kernel runs inside the zygote after a fork.
+
+    /** Sixteen bytes: the name both halves use. */
+    private const val KIND_TOKEN = 4
 
     // Matches the kernel side: 24 MiB of headroom under the 65536 entry cap.
     private const val PAGE_BYTES = 32 * 1024
@@ -79,15 +85,14 @@ object KernelPolicy {
             .putInt(count)
             .array() + records
 
+    @Synchronized
     fun push(pairs: IntArray): Boolean {
         val blob = ByteBuffer.allocate(pairs.size * 4).order(ByteOrder.LITTLE_ENDIAN)
         pairs.forEach { blob.putInt(it) }
         val bytes = blob.array()
 
-        if (bytes.isEmpty()) {
-            logD(TAG) { "Nothing to hand over" }
-            return true
-        }
+        require(pairs.size % 2 == 0)
+        // Empty is an explicit policy replacement too; it must clear the previous rules.
 
         if (bytes.size > MAX_BLOB_BYTES) {
             logE(TAG) { "The policy is ${bytes.size} bytes, over the ${MAX_BLOB_BYTES} the kernel takes" }
@@ -159,111 +164,83 @@ object KernelPolicy {
      * Hands over the files the kernel has to watch: the kernel replaces the ->open of each one, and
      * the first file of its own code that an isolated child opens gives it the app it belongs to.
      *
-     * The layout is the kernel's: a u32 count, then per entry an action, a uid, the byte offset of the
-     * path inside the same blob and the path's size including its NUL. The kernel resolves the path,
-     * so no inode is sent.
+     * ApkRecords encodes the 24-byte header including stat-encoded dev and 64-bit ino.
+     * The kernel never resolves the diagnostic path.
      */
 
     /** A file the kernel was told about: who it belongs to, and what it was when it was added. */
-    private data class Held(
-        val uid: Int,
-        val dev: Long,
-        val ino: Long,
-    )
 
     /** What the kernel holds, as this side last handed it over. */
-    private val held = HashMap<String, Held>()
+    private val held = HashMap<String, ApkIdentity>()
 
     /** How much this side believes the kernel holds. */
-    fun heldCount(): Int = held.size
+    @Synchronized fun heldCount(): Int = held.size
 
     /** A module that has just been loaded holds nothing: the two ledgers start level again. */
-    fun forgetHeld() = held.clear()
+    @Synchronized fun forgetHeld() = held.clear()
 
-    fun pushApks(entries: List<Pair<Int, String>>): Boolean {
+    /** The name both halves use, handed to the kernel so the other half can learn it too. */
+    @Synchronized
+    fun pushToken(words: IntArray): Boolean {
+        require(words.size == 4)
+        try {
+            val fd = Os.socket(OsConstants.AF_NETLINK, OsConstants.SOCK_RAW, NETLINK_GENERIC)
+            try {
+                Os.setsockoptTimeval(fd, OsConstants.SOL_SOCKET, OsConstants.SO_RCVTIMEO, StructTimeval.fromMillis(2_000))
+                val family = resolveFamily(fd)
+                if (family <= 0) return false
+
+                val bytes = ByteBuffer.allocate(words.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+                words.forEach { bytes.putInt(it) }
+                return call(fd, family, CMD_BEGIN, beginBlob(KIND_TOKEN)) &&
+                    call(fd, family, CMD_BATCH, batchBlob(words.size, bytes.array())) &&
+                    call(fd, family, CMD_END, endBlob())
+            } finally {
+                runCatching { Os.close(fd) }
+            }
+        } catch (cause: Throwable) {
+            logW(TAG, cause) { "Could not hand the name to the kernel half" }
+
+            return false
+        }
+    }
+
+    @Synchronized
+    fun pushApks(
+        entries: List<Pair<Int, String>>,
+        fullSnapshot: Boolean = true,
+    ): Boolean {
         val current = LinkedHashMap<String, Int>()
         for ((uid, path) in entries) current.putIfAbsent(path, uid)
 
-        // The whole set travels every time: the kernel parks whatever the newest generation did not
-        // mention. The ledger is kept only to name files that are gone.
-        val adds = ArrayList<Triple<Int, String, Held>>()
-        val identityOf = LinkedHashMap<String, Held>()
+        // Reoffer every current identity; explicit DEL records remove absent/replaced identities.
+        val adds = ArrayList<Triple<Int, String, ApkIdentity>>()
+        var missing = 0
+        val identityOf = LinkedHashMap<String, ApkIdentity>()
         for ((path, uid) in current) {
             val stat =
                 try {
                     Os.stat(path)
                 } catch (cause: Throwable) {
-                    logD(TAG) { "No identity for " + path + ": " + cause.message }
+                    logW(TAG, cause) { "No identity for $path; offering all other APKs and retrying later" }
+                    missing++
                     continue
                 }
 
-            val identity = Held(uid, stat.st_dev, stat.st_ino)
+            val identity = ApkIdentity(uid, stat.st_dev, stat.st_ino)
             adds.add(Triple(uid, path, identity))
             identityOf[path] = identity
         }
 
-        // The ledger is keyed by (dev, ino): a file replaced in place needs the old identity dropped
-        // before its path can be added again.
-        val replaced =
-            identityOf
-                .filter { (path, identity) ->
-                    val before = held[path]
-                    before != null && (before.dev != identity.dev || before.ino != identity.ino)
-                }.values
-
-        /*
-         * A file that is gone has to be named for the kernel to let go of it, and the path it was
-         * added under is gone with it: the only name left is the identity the file had then, which
-         * is why it is remembered here. The kernel keys its own ledger the same way.
-         */
-        val drops = held.filterKeys { it !in current }
-
-        if (adds.isEmpty() && drops.isEmpty()) {
-            logD(TAG) { "The kernel already holds every one of " + current.size + " apk(s)" }
-            return true
-        }
-
-        /*
-         * One record per file (kaux.h kaux_apk_rec): a 24 byte head plus the path, NUL
-         * terminated and padded to four bytes so the next record stays aligned. An add
-         * leaves dev/ino 0 -- the kernel resolves the path and stamps the entry with it.
-         */
-        val addRecords =
-            adds.map { (uid, path, _) ->
-                val bytes = path.toByteArray(Charsets.UTF_8)
-                ByteBuffer
-                    .allocate(24 + ((bytes.size + 4) and 3.inv()))
-                    .order(ByteOrder.LITTLE_ENDIAN)
-                    .putInt(KAUX_OP_ADD)
-                    .putInt(uid)
-                    .putInt(0)
-                    .putInt(0)
-                    .putInt(0)
-                    .putInt(bytes.size + 1)
-                    .put(bytes)
-                    .put(0)
-                    .array()
-            }
-
-        /*
-         * A drop carries identity only -- shadow_drop_id(dev, (hi << 32) | lo) -- with no
-         * path, because the file is gone and the module's ledger is what still knows which
-         * one it was. Writing the uid into the dev field made every drop match nothing and
-         * still count as success, so the table grew by one per install instead of holding.
-         */
-        val delRecords =
-            (drops.values + replaced).distinctBy { it.dev to it.ino }.map { gone ->
-                ByteBuffer
-                    .allocate(24)
-                    .order(ByteOrder.LITTLE_ENDIAN)
-                    .putInt(KAUX_OP_DEL)
-                    .putInt(0)
-                    .putInt((gone.dev and 0xffffffffL).toInt())
-                    .putInt((gone.ino and 0xffffffffL).toInt())
-                    .putInt(((gone.ino ushr 32) and 0xffffffffL).toInt())
-                    .putInt(0)
-                    .array()
-            }
+        // Missing stat for one path must neither suppress valid records nor drop its old identity.
+        val protectedCurrent = identityOf.toMutableMap()
+        for (path in current.keys) if (path !in protectedCurrent) held[path]?.let { protectedCurrent[path] = it }
+        // A cold native-lib cache cannot justify removing libraries already attached.
+        val previous = held.filterKeys { it.endsWith(".apk") || it in identityOf }
+        val drops = previous.filterKeys { fullSnapshot && it !in current }
+        val removals = ApkRecords.obsolete(previous, protectedCurrent, fullSnapshot)
+        val addRecords = adds.map { (_, path, identity) -> ApkRecords.add(path, identity) }
+        val delRecords = removals.map { ApkRecords.drop(it) }
 
         return try {
             val fd = Os.socket(OsConstants.AF_NETLINK, OsConstants.SOCK_RAW, NETLINK_GENERIC)
@@ -316,7 +293,7 @@ object KernelPolicy {
                 // Sent in slices: this runs in system_server, and thousands of records in one go keep
                 // the framework from running for seconds.
                 var sinceYield = 0
-                for (record in addRecords + delRecords) {
+                for (record in delRecords + addRecords) {
                     if (bytes + record.size > PAGE_BYTES - 8 && !flush()) {
                         return false
                     }
@@ -343,10 +320,10 @@ object KernelPolicy {
                 for (path in drops.keys) held.remove(path)
 
                 logI(TAG) {
-                    "Handed the kernel half " + adds.size + " new apk(s) and " + delRecords.size +
-                        " removal(s) (" + replaced.size + " replaced); it holds " + held.size + " now"
+                    "Handed the kernel half " + adds.size + " record(s) and " + delRecords.size +
+                        " removal(s); missing=" + missing + "; it holds " + held.size + " now"
                 }
-                true
+                missing == 0
             } finally {
                 Os.close(fd)
             }
@@ -408,8 +385,24 @@ object KernelPolicy {
         offset: Int,
         length: Int,
     ): Map<String, String> {
-        if (length < MIN_STATUS_LENGTH) return linkedMapOf("state" to "short status, $length bytes")
+        if (offset < 0 ||
+            length < MIN_STATUS_LENGTH ||
+            offset > reply.size ||
+            length > reply.size - offset
+        ) {
+            return linkedMapOf("state" to "short status, $length bytes")
+        }
         if (i32(reply, offset) != STATUS_MAGIC) return linkedMapOf("state" to "wrong magic")
+        // The record says how long it is and which family wrote it, and both are checked: a kernel
+        // whose structure differs still carries the magic, and reading its fields by this offset
+        // table would report one field as another without anything looking wrong.
+        if (u32(reply, offset + 4) != MIN_STATUS_LENGTH.toLong()) {
+            return linkedMapOf("state" to "status of ${u32(reply, offset + 4)} bytes, not $MIN_STATUS_LENGTH")
+        }
+        val family = u32(reply, offset + 8)
+        if (family != FAMILY_VERSION.toLong()) {
+            return linkedMapOf("state" to "kernel family version $family, this half speaks $FAMILY_VERSION")
+        }
 
         return linkedMapOf(
             "state" to "loaded",
@@ -427,6 +420,10 @@ object KernelPolicy {
             "pageShift" to u32(reply, offset + 60).toString(),
             "uidTier" to cString(reply, offset + 64, 32),
             "setuidTier" to cString(reply, offset + 96, 32),
+            "token0" to u32(reply, offset + 128).toString(),
+            "token1" to u32(reply, offset + 132).toString(),
+            "token2" to u32(reply, offset + 136).toString(),
+            "token3" to u32(reply, offset + 140).toString(),
         )
     }
 

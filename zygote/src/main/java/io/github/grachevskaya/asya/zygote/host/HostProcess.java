@@ -57,7 +57,17 @@ public final class HostProcess {
             // is about to exist.
             HostBridge.INSTANCE.install(apk.getClassLoader());
 
-            startManagerApplication(thread, apk);
+            // The manager's application reads the configuration out of the host's own files, and those
+            // are not there until the user's storage is. Started before that, it reads an empty one and
+            // keeps it -- at boot, the first and only time it was started was too early. The start waits
+            // for the unlock, so the read happens once, where there is something to read.
+            io.github.grachevskaya.asya.common.UserUnlockKt.whenUserUnlocked(
+                    thread.getApplication(),
+                    () -> {
+                        startManagerApplication(thread, apk);
+
+                        return kotlin.Unit.INSTANCE;
+                    });
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not replace the instrumentation");
         }

@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.grachevskaya.asya.common.ServiceBridge
+import io.github.grachevskaya.asya.common.whenUserUnlocked
 import io.github.grachevskaya.asya.service.ConfigManager
 import io.github.grachevskaya.asya.service.PrefManager
 import io.github.grachevskaya.asya.service.ServiceClient
@@ -21,6 +22,11 @@ class MyApp : Application() {
 
     fun loadConfiguration() {
         ConfigManager.init()
+
+        // What was read is said to the service as well. The handshake may have come before the storage
+        // was readable, and a configuration the service never heard leaves the kernel half hiding
+        // nothing until the manager is opened.
+        ServiceClient.pushConfig()
     }
 
     fun loadPreferences() {
@@ -39,7 +45,11 @@ class MyApp : Application() {
         asyaApp = this
 
         loadPreferences()
-        loadConfiguration()
+
+        // The first read of the configuration waits for the storage. The state directory is resolved
+        // exactly twice in its life -- found, or made here and now -- and a read taken before the
+        // user's storage is there is what made the manager keep an empty configuration.
+        whenUserUnlocked(this) { loadConfiguration() }
 
         // A package transaction is over: the tables and the lists may be read again.
         ServiceBridge.onServiceEvent = {

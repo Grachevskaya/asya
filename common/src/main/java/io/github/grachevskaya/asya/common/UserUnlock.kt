@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.UserManager
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -30,32 +31,26 @@ private const val MANAGER_USER = 0
  * reachable is neither necessary nor sufficient for that answer.
  */
 fun storageIsUnlocked(context: Context?): Boolean {
-    if (unlockedFor(MANAGER_USER, context) == true) return true
+    if (unlockedFor(context) == false) return false
 
-    return ceAvailable()
+    // The framework answers about the user, not about this directory: on the build this was written
+    // for, sys.user.0.ce_available was already 1 while the directory was still absent, and a name
+    // invented from that answer is what the rest of this file is here to prevent. A directory that
+    // cannot be listed is the one answer that cannot be wrong.
+    return runCatching { File(StatePaths.HOST_DATA_ROOT).listFiles() }.getOrNull() != null
 }
 
-/** The answer for one user, or null if the runtime will not be asked that question at all. */
-private fun unlockedFor(
-    user: Int,
-    context: Context?,
-): Boolean? =
+/**
+ * The framework's own answer, from the public no-argument entry point. This module only ever asks
+ * about user 0 -- the user the host and its files live in -- so the entry point that answers about the
+ * caller is the one to ask, and the hidden isUserUnlocked(int) overload is not a public API at all.
+ */
+private fun unlockedFor(context: Context?): Boolean? =
     runCatching {
         val manager = (context ?: appContext())?.getSystemService(UserManager::class.java) ?: return@runCatching null
-        val method = UserManager::class.java.getMethod("isUserUnlocked", Int::class.javaPrimitiveType)
 
-        method.invoke(manager, user) as? Boolean
+        manager.isUserUnlocked
     }.getOrNull()
-
-/** The framework's own signal for user 0's credential-encrypted storage. */
-private fun ceAvailable(): Boolean =
-    runCatching {
-        val type = Class.forName("android.os.SystemProperties")
-        val get = type.getMethod("get", String::class.java)
-        val value = get.invoke(null, "sys.user.0.ce_available") as? String
-
-        value == "1" || value.equals("true", ignoreCase = true)
-    }.getOrDefault(false)
 
 /**
  * Blocking, with no deadline: for a thread with nothing else to do until it returns.

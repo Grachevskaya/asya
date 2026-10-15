@@ -69,7 +69,10 @@ public final class HostFiles {
     /** The manager apk as this host's own state directory holds it, or null when it is not there. */
     private static String realManagerApkPath() {
         try {
-            File apk = new File(io.github.grachevskaya.asya.common.StatePaths.INSTANCE.stateDir(), "manager.apk");
+            java.io.File directory = io.github.grachevskaya.asya.common.StatePaths.INSTANCE.stateDirOrNull();
+            if (directory == null) return null;
+
+            File apk = new File(directory, "manager.apk");
             return apk.isFile() ? apk.getAbsolutePath() : null;
         } catch (Throwable ignored) {
             return null;

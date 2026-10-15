@@ -27,7 +27,7 @@ object ServiceClient {
             .FilterHolder()
 
     /** Where the totals live between runs: the manager is the side that keeps them. */
-    private fun countsFile(): File? = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS)
+    private fun countsFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.FILTER_COUNTS) }
 
     init {
         // The totals have to survive the manager being restarted, so a read that fails is said out
@@ -60,20 +60,38 @@ object ServiceClient {
 
         // The file is what the root side reads, so a write that fails is a configuration the kernel
         // never sees: it is logged rather than dropped.
+        // The service sends its own copy when a package arrives before the handshake does. Its copy is
+        // the older one then, and an older copy carrying fewer callers would take the configuration
+        // with it: a write that shrinks it is refused, and said out loud.
         io.github.grachevskaya.asya.common.ServiceBridge.configSink = { json ->
-            try {
-                configFile()?.writeText(json)
-            } catch (cause: Throwable) {
-                Log.e(TAG, "Could not write the configuration the service sent", cause)
+            val incoming =
+                runCatching {
+                    io.github.grachevskaya.asya.common.JsonConfig
+                        .parse(json)
+                        .scope.size
+                }.getOrDefault(0)
+            val kept =
+                runCatching {
+                    io.github.grachevskaya.asya.common.JsonConfig
+                        .parse(configOrNull ?: "{}")
+                        .scope.size
+                }.getOrDefault(0)
+
+            if (incoming < kept) {
+                Log.w(TAG, "Refusing a configuration with " + incoming + " caller(s) over one with " + kept)
+            } else {
+                setConfig(json)
             }
         }
 
-        io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { config = config }
+        // Only a configuration that was really read is handed over: an absent storage is not an empty
+        // configuration, and pushing one would be answered by an empty policy in the kernel.
+        io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { pushConfig() }
 
         // On its own thread: the host's main thread is busy for seconds at boot, and the accessors
         // below read a file and call a binder, which any thread may do.
         if (io.github.grachevskaya.asya.common.ServiceBridge.serviceReady) {
-            Thread({ config = config }, "asya-push-config").apply { isDaemon = true }.start()
+            Thread({ configOrNull?.let { setConfig(it) } }, "asya-push-config").apply { isDaemon = true }.start()
         }
 
         android.util.Log.i(
@@ -83,6 +101,22 @@ object ServiceClient {
                 ", bridge=" + System.identityHashCode(io.github.grachevskaya.asya.common.ServiceBridge) +
                 ", loader=" + io.github.grachevskaya.asya.common.ServiceBridge::class.java.classLoader,
         )
+    }
+
+    /**
+     * Hands the configuration over, whichever side is listening. Nothing at all is handed over when
+     * nothing has been read: the service's own copy is then the one from before, and the kernel half
+     * keeps what it has rather than being emptied with a document that was never anybody's.
+     */
+    fun pushConfig() {
+        val loaded = configOrNull
+        if (loaded == null) {
+            Log.w(TAG, "There is no configuration to push yet; the storage has not been read")
+
+            return
+        }
+
+        setConfig(loaded)
     }
 
     private fun addFilterCounts(json: String) {
@@ -131,14 +165,14 @@ object ServiceClient {
 
     // ---------------------------------------------------------------- the service's files
 
-    /** The manager's own directory, from the one place that names it. */
-    private fun serviceDir(): File =
+    /** The manager's own directory, from the one place that names it: null until the storage is there. */
+    private fun serviceDir(): File? =
         io.github.grachevskaya.asya.common.StatePaths
-            .stateDir()
+            .stateDirOrNull()
 
-    private fun configFile(): File = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.CONFIG_NAME)
+    private fun configFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.CONFIG_NAME) }
 
-    private fun logFile(): File = File(serviceDir(), io.github.grachevskaya.asya.common.StatePaths.LOG_NAME)
+    private fun logFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.LOG_NAME) }
 
     /** The kernel's own answer, held by the service and handed over the bridge. */
     val kernelStatus: Map<String, String> get() =
@@ -156,50 +190,73 @@ object ServiceClient {
             ?.get(name)
             ?.toIntOrNull() ?: 0
 
-    /** Read from the file once, then held in memory: after the start the file is written, not read. */
+    /**
+     * Read from the file once, then held in memory: after the start the file is written, not read.
+     *
+     * Three answers are kept apart on purpose. A file that is not there, in a directory that can be
+     * read, is a configuration that has never been written, and an empty one is the truth about it. A
+     * directory that cannot be read at all is not an empty configuration but the absence of one, and
+     * that is null: nothing is cached from it, so the next ask -- once the storage is readable --
+     * reads the file that was there all along.
+     */
     @Volatile
     private var heldConfig: String? = null
 
-    var config: String
+    val configOrNull: String?
         get() {
             heldConfig?.let { return it }
 
+            val file = configFile() ?: return null
             val loaded =
                 try {
-                    configFile()?.takeIf { it.isFile }?.readText() ?: "{}"
+                    if (file.isFile) file.readText() else "{}"
                 } catch (cause: Throwable) {
                     Log.e(TAG, "Could not read the configuration", cause)
-                    "{}"
+
+                    return null
                 }
 
             heldConfig = loaded
 
             return loaded
         }
-        set(text) {
-            heldConfig = text
-            android.util.Log.i(
-                "AsyaManager",
-                "pushing configuration: " + text.length + " chars, " +
-                    (
-                        runCatching {
-                            io.github.grachevskaya.asya.common.JsonConfig
-                                .parse(text)
-                                .scope.size
-                        }.getOrNull()
-                    ) +
-                    " caller(s)",
-            )
 
-            try {
-                configFile()?.writeText(text)
-            } catch (cause: Throwable) {
-                Log.e(TAG, "Could not write the configuration", cause)
-            }
+    /**
+     * Pushes a configuration and keeps it. The kernel half hears it first, because that half is what
+     * hides and it is not a file; the file is written only when there is a directory to write it in,
+     * and a write that could not happen says so instead of being passed over.
+     */
+    fun setConfig(text: String) {
+        heldConfig = text
+        android.util.Log.i(
+            "AsyaManager",
+            "pushing configuration: " + text.length + " chars, " +
+                (
+                    runCatching {
+                        io.github.grachevskaya.asya.common.JsonConfig
+                            .parse(text)
+                            .scope.size
+                    }.getOrNull()
+                ) +
+                " caller(s)",
+        )
 
-            io.github.grachevskaya.asya.common.ServiceBridge.host
-                ?.setConfig(text)
+        io.github.grachevskaya.asya.common.ServiceBridge.host
+            ?.setConfig(text)
+
+        val file = configFile()
+        if (file == null) {
+            Log.w(TAG, "The storage is not readable yet; the configuration is held in memory only")
+
+            return
         }
+
+        try {
+            file.writeText(text)
+        } catch (cause: Throwable) {
+            Log.e(TAG, "Could not write the configuration", cause)
+        }
+    }
 
     val logs: String
         get() =
@@ -402,9 +459,13 @@ object ServiceClient {
         }
     }
 
-    /** Hands the configuration this side already holds over again. No file is read. */
+    /**
+     * Hands the configuration over again, for a caller that has just come back. What this side holds is
+     * what is sent: when nothing has been read yet, the file is read once here rather than an empty
+     * document being sent in its place.
+     */
     fun repushConfig() {
-        config = config
+        pushConfig()
     }
 
     /** A parceled list, without naming the class: the api that returns it is hidden. */

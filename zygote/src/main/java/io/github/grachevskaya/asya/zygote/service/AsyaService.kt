@@ -11,7 +11,6 @@ import io.github.grachevskaya.asya.common.JsonConfig
 import io.github.grachevskaya.asya.common.RiskyPackageUtils
 import io.github.grachevskaya.asya.common.ServiceBridge
 import io.github.grachevskaya.asya.common.Utils.binderLocalScope
-import io.github.grachevskaya.asya.common.Utils.cleanRemnantsFromConfig
 import io.github.grachevskaya.asya.common.Utils.getPackageInfoCompat
 import io.github.grachevskaya.asya.common.Utils.isSystemApp
 import io.github.grachevskaya.asya.zygote.hook.ActivityHook
@@ -28,6 +27,7 @@ import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget34
 import io.github.grachevskaya.asya.zygote.hook.ShutdownHook
 import io.github.grachevskaya.asya.zygote.hook.UserChangeHook
 import io.github.grachevskaya.asya.zygote.hook.ZygoteHook
+import io.github.grachevskaya.asya.zygote.service.precomputeAllNativeLibs
 import io.github.grachevskaya.asya.zygote.util.ActivityManagerUtils
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getDefaultBrowser
 import io.github.grachevskaya.asya.zygote.util.BrowserUtils.getWebviewProvider
@@ -40,7 +40,7 @@ import io.github.grachevskaya.asya.zygote.util.PackageManagerUtils.isConflicting
 class AsyaService(
     val pms: IPackageManager,
     val pmn: Any?,
-) : io.github.grachevskaya.asya.common.ServiceBridge.Host {
+) : ServiceBridge.Host {
     // ---- ServiceBridge.Host: the in-process answers the manager asks for ----
 
     override val isAlive: Boolean get() = true
@@ -52,7 +52,8 @@ class AsyaService(
     @Volatile
     internal var kernelStatusCache: Map<String, String> = emptyMap()
 
-    override fun kernelStatus(): Map<String, String> = kernelStatusCache
+    // The rendezvous is a secret; it must never travel over the manager bridge.
+    override fun kernelStatus(): Map<String, String> = kernelStatusCache.filterKeys { !it.startsWith("token") }
 
     /** Package install/remove/replace: the table follows through the ordinary push path. */
     override fun onPackagesChanged() {
@@ -60,6 +61,12 @@ class AsyaService(
 
         // The push that follows is what moves the kernel's numbers, and they are read on its way back:
         // an install or a removal is one of the moments the table is handed over again.
+        /*
+         * Read here, before the user's storage is decrypted: the configuration lives beside the
+         * module, so a boot has the rules from its first moment. A manager that changes anything
+         * pushes the change over the bridge, and that is what writes this file.
+         */
+        precomputeAllNativeLibs()
         pushPolicyToKernel()
         announcePackagesChanged()
     }
@@ -71,8 +78,7 @@ class AsyaService(
     private fun announcePackagesChanged() {
         val binder = managerBinder ?: return
         runCatching {
-            io.github.grachevskaya.asya.common.ServiceBridge
-                .notifyPackagesChanged(binder)
+            ServiceBridge.notifyPackagesChanged(binder)
         }.onFailure { logW(TAG) { "Could not announce the package change: $it" } }
     }
 
@@ -90,8 +96,10 @@ class AsyaService(
         runCatching {
             binder.linkToDeath(
                 {
-                    managerBinder = null
-                    logW(TAG) { "The manager is gone from the bridge" }
+                    if (managerBinder === binder) {
+                        managerBinder = null
+                        logW(TAG) { "The manager is gone from the bridge" }
+                    }
                 },
                 0,
             )
@@ -103,6 +111,12 @@ class AsyaService(
         logI(TAG) { "The manager is on the bridge: " + descriptor + " / " + binder.javaClass.name }
 
         logI(TAG) { "The manager is on the bridge" }
+        // Whichever happens last (bootstrap or handshake) sends the restored snapshot.
+        val snapshot = synchronized(configLock) { if (stateReady) config.toString() else null }
+        snapshot?.let { json ->
+            runCatching { ServiceBridge.notifyConfigChanged(binder, json) }
+                .onFailure { logW(TAG, it) { "Could not send restored configuration to manager" } }
+        }
     }
 
     /** The live counter, which is what the manager reads while this service is in the process. */
@@ -129,47 +143,56 @@ class AsyaService(
     private fun invalidatePackageCaches() {
         invalidateConfigCaches()
         PackageModelReader.cachedPackageModel = null
+        clearNativeLibCache()
     }
 
-    /** The configuration this service holds, answered from memory: the file is for the root side. */
-    override fun configJson(): String? = runCatching { config.toString() }.getOrNull()
+    /** The service reads persisted state first; only an acknowledged snapshot is handed to the manager. */
+    override fun configJson(): String? = synchronized(configLock) { if (stateReady) config.toString() else null }
 
-    /** The manager pushed a configuration: it is applied here and written to disk for the next boot. */
-
-    /** The manager pushed a configuration: the service applies it and keeps it in memory. */
+    /** A manager update is accepted only after the state daemon has committed it. */
     override fun setConfig(json: String): Boolean =
-        runCatching { applyPushedConfig(json) }
+        runCatching { synchronized(configLock) { stateReady && applyPushedConfig(json) } }
             .onFailure { logE(TAG, it) { "Could not apply the pushed configuration" } }
-            .isSuccess
+            .getOrDefault(false)
 
     val hooker = BulkHooker()
     val dataHolder = AsyaServiceDataHolder()
 
     private val loggerLock = Any()
 
-    /** When the counts last left this side: they travel on the log lines' clock. */
-    @Volatile
-    private var lastCountFlush = 0L
+    private val configLock = Any()
 
-    /** The counts gathered so far leave in one document, and the ledger starts again from nothing. */
-    private fun flushFilterCounts() {
-        val binder = managerBinder ?: return
-        val taken = dataHolder.takeFilterCounts()
-        if (taken.totalCount == 0) return
+    @Volatile private var stateReady = false
+    private var savedCounts: String? = null
+    private val countFlushQueued =
+        java.util.concurrent.atomic
+            .AtomicBoolean()
+    private val stateExecutor =
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "asya-state-flush").apply { isDaemon = true }
+        }
 
-        // The ledger goes back unless the manager said it took it.
-        if (!runCatching { ServiceBridge.notifyFilterDeltas(binder, taken.toString()) }.getOrDefault(false)) {
-            dataHolder.mergeFilterCounts(taken)
-            logW(TAG) { "The counts were not taken; they wait for the next batch" }
+    /** Hooks never do disk/socket I/O. The service owns totals; the manager receives snapshots. */
+    private fun persistFilterCounts() {
+        if (!stateReady) return
+        synchronized(statsLock) {
+            val text = dataHolder.filterCountsSnapshot()
+            if (savedCounts != text && StateClient.write(StateClient.STATE_COUNTS, text.toByteArray(Charsets.UTF_8))) {
+                savedCounts = text
+            }
         }
     }
 
-    private fun countGathered() {
-        val now = System.currentTimeMillis()
-        if (now - lastCountFlush < BridgeProtocol.LOG_FLUSH_PERIOD_MS) return
-
-        lastCountFlush = now
-        flushFilterCounts()
+    private fun flushFilterCounts() {
+        if (!stateReady || !countFlushQueued.compareAndSet(false, true)) return
+        stateExecutor.execute {
+            try {
+                persistFilterCounts()
+                flushNativeLibCache()
+            } finally {
+                countFlushQueued.set(false)
+            }
+        }
     }
 
     /** Guards the counts when they are cleared while a reader walks them. */
@@ -184,6 +207,9 @@ class AsyaService(
 
     var config = JsonConfig().apply { detailLog = true }
         internal set
+
+    private var webviewProviderCache: Pair<Boolean, String?>? = null
+    private val browserCache = HashMap<Int, String?>()
 
     init {
         StatusReporter.managerWorkMode =
@@ -200,7 +226,7 @@ class AsyaService(
          */
         runCatching { saveModuleStatus() }.onFailure { logE(TAG, it) { "saveModuleStatus" } }
         UserService.service = this
-        dataHolder.onCount = { _, _, _ -> countGathered() }
+        // Counts are flushed periodically, including the last increment of a quiet interval.
 
         if (StatusReporter.managerWorkMode != Constants.MANAGER_WORK_MODE_NO_HOOKS) {
             installHooks()
@@ -216,30 +242,32 @@ class AsyaService(
 
         logI(TAG) { "Asya service initialized in mode ${StatusReporter.managerWorkMode}" }
 
-        // Nothing is read here: what the kernel holds becomes true on the way back from a push, and
-        // the push is what start-up is for. It happens as soon as the manager's configuration is in,
-        // and it waits for the unlock without a deadline -- the apk paths cannot be resolved before
-        // that, and the unlock is what the wait is for, not a window it has to fit into.
+        // APK discovery must not depend on a manager config or a working state daemon.
+        pushPolicyToKernel()
+        precomputeAllNativeLibs()
+        startStateBootstrap()
+        stateExecutor.scheduleWithFixedDelay({ flushFilterCounts() }, 2L, 2L, java.util.concurrent.TimeUnit.SECONDS)
     }
 
-    /**
-     * The configuration as the manager pushed it. Nothing here is read from disk: the host hands the
-     * document over on the bridge, and the file is written only for the root side to read.
-     */
-    private fun applyPushedConfig(json: String) {
+    /** Called by the manager or boot restoration. Never prune installed packages while locked. */
+    private fun applyPushedConfig(
+        json: String,
+        persist: Boolean = true,
+    ): Boolean {
         val loading =
             runCatching { JsonConfig.parse(json) }
                 .getOrElse {
                     logW(TAG, it) { "Could not parse the pushed configuration" }
-                    return
+                    return false
                 }
 
         if (loading.configVersion != BuildConfig.CONFIG_VERSION) {
             logW(TAG) { "Config version mismatch, need to reload" }
-            return
+            return false
         }
 
-        loading.cleanRemnantsFromConfig()
+        // Do not prune packages before unlock. A save is acknowledged only after durable storage.
+        if (persist && !saveConfigBesideTheModule(loading.toString())) return false
         config = loading
 
         // The configuration is what the caches answer for, and the pass that follows is what the
@@ -247,10 +275,13 @@ class AsyaService(
         invalidateConfigCaches()
         pushPolicyToKernel()
 
+        // The asynchronous policy worker sends the matching hidden-name table.
+
         logI(TAG) {
             "Config loaded: " + json.length + " chars, " + config.scope.size + " caller(s), " +
                 "detailLog=" + config.detailLog
         }
+        return true
     }
 
     private fun installHooks() {
@@ -369,9 +400,6 @@ class AsyaService(
         return appConfig.useWhitelist
     }
 
-    private var webviewProviderCache: Pair<Boolean, String?>? = null
-    private val browserCache = HashMap<Int, String?>()
-
     /** The webview provider, resolved once (see shouldHide). */
     private fun cachedWebviewProvider(): String? {
         webviewProviderCache?.let { return it.second }
@@ -459,9 +487,9 @@ class AsyaService(
 
     /** Whatever is gathered leaves before the process does. */
     fun flushForShutdown() {
-        flushFilterCounts()
-
-        logI(TAG) { "Flushed for shutdown" }
+        // The process may exit before its scheduled worker runs: persist this snapshot now.
+        persistFilterCounts()
+        logI(TAG) { "Counts flushed for shutdown" }
     }
 
     /** The log lines are handed to the manager as they are made, so there is nothing to clear here. */
@@ -480,19 +508,18 @@ class AsyaService(
 
     /** For packages that have just been installed; a package that already has a config keeps it. */
     fun applyDefaultConfigTo(packageNames: List<String>) {
-        val default = config.defaultConfig ?: return
-        if (packageNames.isEmpty()) return
-        var changed = false
-        for (name in packageNames) {
-            if (config.scope.putIfAbsent(name, default) == null) changed = true
-        }
-        // The defaults land in the configuration this side holds, and the manager keeps the file:
-        // it is told what changed, since no file here would ever say it.
-        if (changed) {
-            managerBinder?.let { binder ->
-                runCatching { ServiceBridge.notifyConfigChanged(binder, config.toString()) }
+        val updated =
+            synchronized(configLock) {
+                if (!stateReady || packageNames.isEmpty()) return
+                val next = JsonConfig.parse(config.toString())
+                val default = next.defaultConfig ?: return
+                var changed = false
+                for (name in packageNames) if (next.scope.putIfAbsent(name, default) == null) changed = true
+                if (!changed || !applyPushedConfig(next.toString())) return
+                config.toString()
             }
-            pushPolicyToKernel()
+        managerBinder?.let { binder ->
+            runCatching { ServiceBridge.notifyConfigChanged(binder, updated) }
         }
     }
 
@@ -536,6 +563,58 @@ class AsyaService(
     fun getDetailedFilterStats(): String = dataHolder.filterCountsSnapshot()
 
     override fun clearFilterStats() {
-        dataHolder.clearFilterCounts()
+        synchronized(statsLock) {
+            check(stateReady) { "State is not ready" }
+            val empty = FilterHolder().toString()
+            check(StateClient.write(StateClient.STATE_COUNTS, empty.toByteArray(Charsets.UTF_8))) { "Could not persist cleared counts" }
+            dataHolder.clearFilterCounts()
+            savedCounts = empty
+        }
+    }
+
+    /** Persist the configuration through the root daemon; never confuse an I/O failure with success. */
+    private fun saveConfigBesideTheModule(text: String): Boolean {
+        val saved = StateClient.write(StateClient.STATE_CONFIG, text.toByteArray(Charsets.UTF_8))
+        if (saved) {
+            logI(TAG) { "Configuration persisted: ${text.length} chars" }
+        } else {
+            logE(TAG) { "Configuration was not persisted" }
+        }
+        return saved
+    }
+
+    /** The four words the state side's secret arrived as, put back into the name it was made from. */
+    private fun tokenFromKernel(): String? {
+        val keys = arrayOf("token0", "token1", "token2", "token3")
+        val words = keys.map { kernelStatusCache[it]?.toLongOrNull() ?: return null }
+        return StateToken.name(words.map { it.toInt() }.toIntArray())
+    }
+
+    private fun startStateBootstrap() {
+        Thread({
+            while (!stateReady) {
+                runCatching {
+                    refreshKernelStatus()
+                    val name = tokenFromKernel()
+                    if (name != null && name.any { it != '0' }) {
+                        StateClient.open(name)
+                        synchronized(configLock) {
+                            val bytes = StateClient.read(StateClient.STATE_CONFIG) ?: error("Configuration read failed")
+                            val counts = StateClient.read(StateClient.STATE_COUNTS) ?: error("Counts read failed")
+                            val restored = if (counts.isEmpty()) FilterHolder() else FilterHolder.parse(counts.toString(Charsets.UTF_8))
+                            val text = if (bytes.isEmpty()) config.toString() else bytes.toString(Charsets.UTF_8)
+                            check(applyPushedConfig(text, persist = bytes.isEmpty())) { "Stored configuration rejected" }
+                            synchronized(statsLock) { dataHolder.mergeFilterCounts(restored) }
+                            stateReady = true
+                        }
+                        logI(TAG) { "Persistent state restored" }
+                        managerBinder?.let { binder -> runCatching { ServiceBridge.notifyConfigChanged(binder, config.toString()) } }
+                        precomputeAllNativeLibs()
+                        flushFilterCounts()
+                    }
+                }.onFailure { logE(TAG, it) { "State bootstrap pending; retrying" } }
+                if (!stateReady) Thread.sleep(2_000L)
+            }
+        }, "asya-state-bootstrap").apply { isDaemon = true }.start()
     }
 }

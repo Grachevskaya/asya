@@ -43,8 +43,17 @@ object ConfigManager {
     private var config = JsonConfig()
 
     fun init() {
+        val rawConfig = ServiceClient.configOrNull
+
+        if (rawConfig == null) {
+            // Not an empty configuration: there is no readable one yet. What is here is left alone, and
+            // the next call -- once the storage is readable -- reads the file that was there all along.
+            Log.i(TAG, "The configuration cannot be read yet; it will be read when the storage is")
+
+            return
+        }
+
         try {
-            val rawConfig = ServiceClient.config
             config = JsonConfig.parse(rawConfig)
         } catch (cause: Throwable) {
             // A configuration that will not parse leaves the rules it carried behind, and an empty
@@ -56,7 +65,7 @@ object ConfigManager {
     }
 
     fun saveConfig() {
-        ServiceClient.config = config.toString()
+        ServiceClient.setConfig(config.toString())
     }
 
     var detailLog: Boolean
