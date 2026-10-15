@@ -24,10 +24,14 @@ class KernelStatusParseTest {
         writeI32(bytes, 136, 0x0b0a0908L)
         writeI32(bytes, 140, 0xfffefdfcL)
 
-        // version, flags, then the native and compat pairs, each a u32 of its own.
+        // version, flags, then the native and compat pairs, each a u32 of its own. The version
+        // is the family's own: it is one of the two fields the record is checked against, along
+        // with its size, so a fixture that invented a number here would not be a record the
+        // kernel could have written.
         (1L..13L).forEach { field ->
             writeI32(bytes, 4 + field.toInt() * 4, field)
         }
+        writeI32(bytes, 8, 6L)
 
         // The two tier names sit at 64 and 96, NUL-terminated.
         writeString(bytes, 64, "uid-tier")
@@ -56,6 +60,32 @@ class KernelStatusParseTest {
 
     private fun parse(record: ByteArray): Map<String, String> = KernelPolicy.parseStatus(record, 0, record.size)
 
+    /**
+     * A record from a kernel that speaks another family version is refused rather than read: the
+     * fields would be somewhere else, and a status page that quietly reported the wrong numbers is
+     * worse than one that says it cannot read them.
+     */
+    @Test
+    fun aRecordFromAnotherFamilyVersionIsRefused() {
+        val bytes = status()
+        writeI32(bytes, 8, 5L)
+
+        val status = parse(bytes)
+
+        assertTrue(status.getValue("state").contains("family version"))
+    }
+
+    /** A record whose own size is not this structure is refused for the same reason. */
+    @Test
+    fun aRecordThatSaysItIsAnotherSizeIsRefused() {
+        val bytes = status()
+        writeI32(bytes, 4, 160L)
+
+        val status = parse(bytes)
+
+        assertTrue(status.getValue("state").contains("bytes"))
+    }
+
     @Test
     fun aRecordShorterThanTheFixedPartIsNotReadAsOne() {
         val short = ByteArray(KernelConstants.MIN_STATUS_LENGTH - 1)
@@ -81,7 +111,7 @@ class KernelStatusParseTest {
         val status = parse(status())
 
         assertEquals("loaded", status["state"])
-        assertEquals("1", status["version"])
+        assertEquals("6", status["version"])
         assertEquals("2", status["flags"])
         assertEquals("3/4", status["native"])
         assertEquals("5/6", status["compat"])
