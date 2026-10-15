@@ -29,8 +29,7 @@ class AsyaServiceDataHolder {
      */
     private val uidPackages = ConcurrentHashMap<Int, Array<String>>()
 
-    var filterHolder = FilterHolder()
-        internal set
+    private var filterHolder = FilterHolder()
 
     fun findCallerByUid(uid: Int) = uidHideCache[uid]?.caller
 
@@ -64,19 +63,6 @@ class AsyaServiceDataHolder {
         return uidPackages.putIfAbsent(uid, resolved) ?: resolved
     }
 
-    /**
-     * Takes every count gathered so far and empties the ledger: what is handed over is added to the
-     * manager's own total, so no count is ever held by both sides.
-     */
-    fun takeFilterCounts(): FilterHolder {
-        synchronized(filterCountLock) {
-            val taken = filterHolder
-            filterHolder = FilterHolder()
-
-            return taken
-        }
-    }
-
     /** The total as it stands, read under the lock the writers take. */
     fun filterCountSnapshot(): Int = synchronized(filterCountLock) { filterHolder.totalCount }
 
@@ -90,7 +76,7 @@ class AsyaServiceDataHolder {
         }
     }
 
-    /** Puts a taken ledger back: the hand that carried it did not reach the manager. */
+    /** Merge persisted totals once during bootstrap, preserving increments already seen this boot. */
     fun mergeFilterCounts(taken: FilterHolder) {
         synchronized(filterCountLock) {
             taken.filterCounts.forEach { (caller, counts) ->

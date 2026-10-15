@@ -22,6 +22,7 @@ class BridgePayloadInstrumentedTest {
         var managerInbox: android.os.IBinder? = null
 
         var resets = 0
+        var acceptSave = true
 
         override fun moduleStatus(): Map<String, String> = mapOf("workMode" to "1")
 
@@ -30,6 +31,7 @@ class BridgePayloadInstrumentedTest {
         override fun configJson(): String? = config
 
         override fun setConfig(json: String): Boolean {
+            if (!acceptSave) return false
             config = json
 
             return true
@@ -106,7 +108,7 @@ class BridgePayloadInstrumentedTest {
 
         payloads().forEach { payload ->
             fake.config = payload
-            assertEquals("the manager received a different document", payload, host.configJson())
+            assertEquals("the manager received a different document", payload.takeIf { it.isNotBlank() }, host.configJson())
         }
     }
 
@@ -116,6 +118,15 @@ class BridgePayloadInstrumentedTest {
 
         assertNotNull(host.kernelStatus())
         assertEquals(mapOf("state" to "loaded"), host.kernelStatus())
+    }
+
+    @Test
+    fun aRejectedSaveIsNotATransactionSuccess() {
+        val (host, fake) = connected()
+        fake.config = "old"
+        fake.acceptSave = false
+        assertEquals(false, host.setConfig("new"))
+        assertEquals("old", fake.config)
     }
 
     @Test

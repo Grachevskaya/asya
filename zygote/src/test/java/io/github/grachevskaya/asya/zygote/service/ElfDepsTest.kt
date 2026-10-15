@@ -2,7 +2,6 @@ package io.github.grachevskaya.asya.zygote.service
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -138,13 +137,13 @@ class ElfDepsTest {
     }
 
     @Test
-    fun aFileThatIsNotAnElfIsKeptAndNotRead() {
+    fun aFileThatIsNotAnElfRequestsConservativeFallback() {
         val root = dir.root
         File(root, "libjunk.so").writeText("not an elf at all, not even close")
 
         val closure = ElfDeps.closure(listOf("libjunk.so"), root)
 
-        assertEquals(setOf("libjunk.so"), closure)
+        assertNull(closure)
     }
 
     @Test
@@ -180,6 +179,6 @@ class ElfDepsTest {
 
         val closure = ElfDeps.closure(listOf("libshort.so"), root)
 
-        assertTrue(closure != null && closure.contains("libshort.so"))
+        assertNull(closure)
     }
 }

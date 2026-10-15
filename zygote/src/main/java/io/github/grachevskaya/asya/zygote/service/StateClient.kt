@@ -5,102 +5,67 @@ import android.net.LocalSocketAddress
 import io.github.grachevskaya.asya.zygote.util.Logcat
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.IOException
 
-/*
- * The other end of the state: this side owns nothing, it asks.
- *
- * The daemon serves an abstract unix socket whose name is the installation's own secret, and this
- * side connects to it. Nothing is registered with the service manager: a name that differs on every
- * installation cannot be granted in SELinux, which is exactly what the kernel said when it was tried.
- */
+/** One connection per request, just like StateDaemon. No callbacks or shared streams. */
 internal object StateClient {
-    private const val TAG = "StateClient"
-    private const val OP_READ = 0
-    private const val OP_WRITE = 1
-
     const val STATE_CONFIG = 0
     const val STATE_LIBRARIES = 1
     const val STATE_COUNTS = 2
 
-    @Volatile
-    private var socket: LocalSocket? = null
+    /** The hidden package names, for the cleanup the kernel runs and the route the zygote takes. */
 
-    @Volatile
-    private var out: DataOutputStream? = null
+    @Volatile private var name: String? = null
 
-    @Volatile
-    private var input: DataInputStream? = null
-
-    @Volatile
-    private var reported = false
-
-    @Volatile
-    private var name: String? = null
-
-    /** The name comes from the service, which reads it from the kernel: this side owns nothing. */
     fun open(candidate: String) {
         name = candidate
     }
 
-    @Volatile
-    var onReady: (() -> Unit)? = null
+    private fun <T> request(
+        which: Int,
+        operation: (DataInputStream, DataOutputStream) -> T,
+    ): T {
+        require(which in 0..2)
+        val address = name ?: throw IOException("State daemon name is not available yet")
+        val socket = LocalSocket()
+        try {
+            socket.connect(LocalSocketAddress(address, LocalSocketAddress.Namespace.ABSTRACT))
+            socket.soTimeout = 5_000
+            check(socket.peerCredentials.uid == 0) { "State peer is not root" }
+            val input = DataInputStream(socket.inputStream)
+            val output = DataOutputStream(socket.outputStream)
+            output.writeInt(which)
+            return operation(input, output)
+        } finally {
+            runCatching { socket.close() }
+        }
+    }
 
-    private fun connect(): Boolean {
-        if (socket != null) return true
-        val name = name ?: return false
-        return runCatching {
-            val made = LocalSocket()
-            made.connect(LocalSocketAddress(name))
-            socket = made
-            input = DataInputStream(made.inputStream)
-            out = DataOutputStream(made.outputStream)
-            Logcat.logI(TAG) { "The state socket is open" }
-            runCatching { onReady?.invoke() }
-            true
-        }.getOrElse { cause ->
-            if (!reported) {
-                reported = true
-                Logcat.logW(TAG, cause) { "The state socket could not be opened" }
+    /** Null is a transport/storage failure; an empty array is a successfully read empty file. */
+    fun read(which: Int): ByteArray? =
+        runCatching {
+            request(which) { input, output ->
+                output.writeInt(StateWire.READ)
+                output.flush()
+                StateWire.readBytes(input)
             }
-            socket = null
-            false
-        }
-    }
+        }.onFailure { Logcat.logE("StateClient", it) { "State read failed: file=$which" } }.getOrNull()
 
-    fun read(which: Int): ByteArray? {
-        if (!connect()) return null
-        return runCatching {
-            val stream = out ?: return null
-            val answer = input ?: return null
-            stream.writeInt(which)
-            stream.writeInt(OP_READ)
-            stream.flush()
-            val size = answer.readInt()
-            val bytes = ByteArray(size)
-            answer.readFully(bytes)
-            bytes
-        }.getOrElse {
-            socket = null
-            null
-        }
-    }
-
-    fun write(which: Int, bytes: ByteArray): Boolean {
-        if (!connect()) return false
-        return runCatching {
-            val stream = out ?: return false
-            val answer = input ?: return false
-            stream.writeInt(which)
-            stream.writeInt(OP_WRITE)
-            stream.writeInt(bytes.size)
-            stream.write(bytes)
-            stream.flush()
-            answer.readInt() == 1
-        }.getOrElse {
-            socket = null
-            false
-        }
-    }
+    fun write(
+        which: Int,
+        bytes: ByteArray,
+    ): Boolean =
+        runCatching {
+            require(bytes.size <= StateWire.MAX_BYTES)
+            request(which) { input, output ->
+                output.writeInt(StateWire.WRITE)
+                output.writeInt(bytes.size)
+                output.write(bytes)
+                output.flush()
+                if (input.readInt() != StateWire.OK) throw IOException("Daemon rejected state write: file=$which")
+                true
+            }
+        }.onFailure { Logcat.logE("StateClient", it) { "State write failed: file=$which" } }.getOrDefault(false)
 
     fun readText(which: Int): String? = read(which)?.toString(Charsets.UTF_8)?.takeIf { it.isNotBlank() }
 }

@@ -10,30 +10,32 @@ import android.util.Log
 import io.github.grachevskaya.asya.BuildConfig
 import io.github.grachevskaya.asya.MyApp.Companion.asyaApp
 import io.github.grachevskaya.asya.common.FilterHolder
+import io.github.grachevskaya.asya.common.JsonConfig
+import io.github.grachevskaya.asya.common.ServiceBridge
+import io.github.grachevskaya.asya.common.StatePaths
 import java.io.File
 
 /*
- * The manager, seen from itself: the bridge the module establishes in this process, and the files the
- * manager keeps. The configuration is read from its file once and held in memory after that; the log
- * lines and the totals arrive over the bridge and are written out here.
+ * The manager sees the service over the bridge. Persistent configuration and count totals belong
+ * to the root state daemon; this side keeps a display cache, never the authoritative copy.
  */
 object ServiceClient {
     private const val TAG = "ServiceClient"
 
-    /** The totals per caller, as they have arrived so far. */
+    /** Last service snapshot, used only when the bridge is temporarily unavailable. */
     @Volatile
     private var counts =
-        io.github.grachevskaya.asya.common
-            .FilterHolder()
+        FilterHolder()
 
-    /* The totals live with the service, which has them before this side is even awake. */
+    // The totals live with the service, which has them before this side is even awake.
 
     init {
         // The totals have to survive the manager being restarted, so a read that fails is said out
         // loud: an empty ledger and a ledger that could not be read look the same on the screen.
         val kept: String? =
             try {
-                io.github.grachevskaya.asya.common.ServiceBridge.host?.filterStatsJson()
+                ServiceBridge.host
+                    ?.filterStatsJson()
             } catch (cause: Throwable) {
                 Log.e(TAG, "Could not read the totals from the service", cause)
                 null
@@ -42,7 +44,7 @@ object ServiceClient {
         if (kept != null) {
             val keptCounts =
                 try {
-                    io.github.grachevskaya.asya.common.FilterHolder
+                    FilterHolder
                         .parse(kept)
                 } catch (cause: Throwable) {
                     Log.e(TAG, "Could not parse the totals kept between runs", cause)
@@ -52,53 +54,41 @@ object ServiceClient {
             if (keptCounts != null) counts = keptCounts
         }
 
-        io.github.grachevskaya.asya.common.ServiceBridge.logSink = { batch -> appendLogLines(batch) }
+        ServiceBridge.logSink = { batch -> appendLogLines(batch) }
 
-        // The manager accumulates them, so the total outlives a service that started over.
-        io.github.grachevskaya.asya.common.ServiceBridge.filterSink = { json -> addFilterCounts(json) }
+        // A service restart restores its own totals; these notifications only refresh the manager's cache.
+        ServiceBridge.filterSink = { json -> addFilterCounts(json) }
 
-        // The file is what the root side reads, so a write that fails is a configuration the kernel
-        // never sees: it is logged rather than dropped.
-        // The service sends its own copy when a package arrives before the handshake does. Its copy is
-        // the older one then, and an older copy carrying fewer callers would take the configuration
-        // with it: a write that shrinks it is refused, and said out loud.
-        io.github.grachevskaya.asya.common.ServiceBridge.configSink = { json ->
-            val incoming =
-                runCatching {
-                    io.github.grachevskaya.asya.common.JsonConfig
-                        .parse(json)
-                        .scope.size
-                }.getOrDefault(0)
-            val kept =
-                runCatching {
-                    io.github.grachevskaya.asya.common.JsonConfig
-                        .parse(configOrNull ?: "{}")
-                        .scope.size
-                }.getOrDefault(0)
-
-            if (incoming < kept) {
-                Log.w(TAG, "Refusing a configuration with " + incoming + " caller(s) over one with " + kept)
-            } else {
-                setConfig(json)
-            }
+        // This notification describes an already committed service-side update, not a save request.
+        ServiceBridge.configSink = { json ->
+            heldConfig = json
+            ConfigManager.init()
         }
 
         // Only a configuration that was really read is handed over: an absent storage is not an empty
         // configuration, and pushing one would be answered by an empty policy in the kernel.
-        io.github.grachevskaya.asya.common.ServiceBridge.onServiceReady = { pushConfig() }
+        ServiceBridge.onServiceReady = {
+            Thread({
+                heldConfig = null
+                ConfigManager.init()
+            }, "asya-load-config").apply { isDaemon = true }.start()
+        }
 
         // On its own thread: the host's main thread is busy for seconds at boot, and the accessors
         // below read a file and call a binder, which any thread may do.
-        if (io.github.grachevskaya.asya.common.ServiceBridge.serviceReady) {
-            Thread({ configOrNull?.let { setConfig(it) } }, "asya-push-config").apply { isDaemon = true }.start()
+        if (ServiceBridge.serviceReady) {
+            Thread({
+                heldConfig = null
+                ConfigManager.init()
+            }, "asya-load-config").apply { isDaemon = true }.start()
         }
 
         android.util.Log.i(
             "AsyaManager",
-            "client up: ready=" + io.github.grachevskaya.asya.common.ServiceBridge.serviceReady +
-                ", host=" + (io.github.grachevskaya.asya.common.ServiceBridge.host != null) +
-                ", bridge=" + System.identityHashCode(io.github.grachevskaya.asya.common.ServiceBridge) +
-                ", loader=" + io.github.grachevskaya.asya.common.ServiceBridge::class.java.classLoader,
+            "client up: ready=" + ServiceBridge.serviceReady +
+                ", host=" + (ServiceBridge.host != null) +
+                ", bridge=" + System.identityHashCode(ServiceBridge) +
+                ", loader=" + ServiceBridge::class.java.classLoader,
         )
     }
 
@@ -121,25 +111,14 @@ object ServiceClient {
     private fun addFilterCounts(json: String) {
         val incoming =
             runCatching {
-                io.github.grachevskaya.asya.common.FilterHolder
+                FilterHolder
                     .parse(json)
             }.getOrNull()
                 ?: return
 
-        synchronized(counts) {
-            incoming.filterCounts.forEach { (caller, added) ->
-                val kept =
-                    counts.filterCounts.getOrPut(caller) {
-                        io.github.grachevskaya.asya.common.FilterHolder
-                            .FilterCount()
-                    }
-                kept.packageManagerCount += added.packageManagerCount
-                kept.activityLaunchCount += added.activityLaunchCount
-            }
-        }
-
+        // Only snapshots are cached. Totals remain authoritative in the service.
+        counts = incoming
     }
-
 
     /** The lines the service hands over, kept here for the page: the file belongs to the service. */
     private val logLines = StringBuilder()
@@ -159,16 +138,15 @@ object ServiceClient {
 
     /** The manager's own directory, from the one place that names it: null until the storage is there. */
     private fun serviceDir(): File? =
-        io.github.grachevskaya.asya.common.StatePaths
+        StatePaths
             .stateDirOrNull()
 
-    private fun configFile(): File? = serviceDir()?.let { File(it, io.github.grachevskaya.asya.common.StatePaths.CONFIG_NAME) }
-
+    private fun configFile(): File? = serviceDir()?.let { File(it, StatePaths.CONFIG_NAME) }
 
     /** The kernel's own answer, held by the service and handed over the bridge. */
     val kernelStatus: Map<String, String> get() =
         try {
-            io.github.grachevskaya.asya.common.ServiceBridge.host
+            ServiceBridge.host
                 ?.kernelStatus() ?: emptyMap()
         } catch (cause: Throwable) {
             Log.e(TAG, "Could not read the kernel status", cause)
@@ -176,7 +154,7 @@ object ServiceClient {
         }
 
     private fun statusValue(name: String): Int =
-        io.github.grachevskaya.asya.common.ServiceBridge.host
+        ServiceBridge.host
             ?.moduleStatus()
             ?.get(name)
             ?.toIntOrNull() ?: 0
@@ -203,7 +181,8 @@ object ServiceClient {
              */
             val fromService =
                 try {
-                    io.github.grachevskaya.asya.common.ServiceBridge.host?.configJson()
+                    ServiceBridge.host
+                        ?.configJson()
                 } catch (cause: Throwable) {
                     Log.e(TAG, "Could not read the configuration from the service", cause)
 
@@ -215,19 +194,14 @@ object ServiceClient {
             return fromService
         }
 
-    /**
-     * Pushes a configuration and keeps it. The kernel half hears it first, because that half is what
-     * hides and it is not a file; the file is written only when there is a directory to write it in,
-     * and a write that could not happen says so instead of being passed over.
-     */
-    fun setConfig(text: String) {
-        heldConfig = text
+    /** Pushes configuration to durable service state. A negative ack never updates the UI cache. */
+    fun setConfig(text: String): Boolean {
         android.util.Log.i(
             "AsyaManager",
             "pushing configuration: " + text.length + " chars, " +
                 (
                     runCatching {
-                        io.github.grachevskaya.asya.common.JsonConfig
+                        JsonConfig
                             .parse(text)
                             .scope.size
                     }.getOrNull()
@@ -235,9 +209,19 @@ object ServiceClient {
                 " caller(s)",
         )
 
-        /* Handed over, not written: the service keeps it beside the module. */
-        io.github.grachevskaya.asya.common.ServiceBridge.host
-            ?.setConfig(text)
+        // Handed over, not written: the service keeps it beside the module.
+        val saved =
+            runCatching {
+                ServiceBridge.host
+                    ?.setConfig(text) == true
+            }.onFailure { Log.e(TAG, "Configuration save failed", it) }
+                .getOrDefault(false)
+        if (saved) {
+            heldConfig = text
+        } else {
+            Log.e(TAG, "Configuration was not acknowledged by persistent storage")
+        }
+        return saved
     }
 
     val logs: String
@@ -260,7 +244,13 @@ object ServiceClient {
         message: String,
     ) {
         synchronized(logLines) {
-            logLines.append(level).append('\t').append(tag).append('\t').append(message).append('\n')
+            logLines
+                .append(level)
+                .append('\t')
+                .append(tag)
+                .append('\t')
+                .append(message)
+                .append('\n')
         }
     }
 
@@ -275,26 +265,27 @@ object ServiceClient {
 
     /** The total this side has added up, plus the increments the service has not handed over yet. */
     val filterCount: Int get() =
-        synchronized(counts) { counts.totalCount } +
-            (
-                io.github.grachevskaya.asya.common.ServiceBridge.host
-                    ?.filterCount() ?: 0
-            )
+        runCatching {
+            ServiceBridge.host
+                ?.filterCount()
+        }.getOrNull()
+            ?: counts.totalCount
 
     /** The per-caller breakdown of what has been counted, as the totals this side keeps. */
-    val detailedFilterStats: String get() = synchronized(counts) { counts.toString() }
+    val detailedFilterStats: String get() {
+        val snapshot =
+            runCatching {
+                ServiceBridge.host
+                    ?.filterStatsJson()
+            }.getOrNull()
+        if (snapshot != null) runCatching { counts = FilterHolder.parse(snapshot) }
+        return counts.toString()
+    }
 
     fun clearFilterStats() {
-        synchronized(counts) {
-            counts =
-                io.github.grachevskaya.asya.common
-                    .FilterHolder()
-        }
-
-        // The service still holds what it has not handed over: a reset has to reach that too, or
-        // the next flush puts the total back on the screen.
-        io.github.grachevskaya.asya.common.ServiceBridge.host
-            ?.clearFilterStats()
+        val host = ServiceBridge.host ?: error("Service is unavailable")
+        host.clearFilterStats()
+        counts = FilterHolder()
     }
 
     // ---------------------------------------------------------------- the system, asked directly

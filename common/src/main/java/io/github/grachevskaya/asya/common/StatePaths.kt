@@ -24,7 +24,6 @@ object StatePaths {
 
     const val NATIVE_LIBS_NAME = "native_libs.json"
 
-
     const val MANAGER_APK_NAME = "manager.apk"
 
     const val LOG_NAME = "runtime.log"
@@ -32,8 +31,7 @@ object StatePaths {
     private const val TAG = "StatePaths"
 
     /** The module's own directory, when it is there. Null is "not now", never "nowhere". */
-    fun moduleStateDirOrNull(): File? =
-        runCatching { File(MODULE_STATE_ROOT) }.getOrNull()?.let { if (it.isDirectory) it else null }
+    fun moduleStateDirOrNull(): File? = runCatching { File(MODULE_STATE_ROOT) }.getOrNull()?.let { if (it.isDirectory) it else null }
 
     /**
      * The state directory, or null while neither place can be used.
@@ -48,7 +46,7 @@ object StatePaths {
 
         val root = File(HOST_DATA_ROOT)
 
-        // A root that cannot be listed is one that is not there yet, or not ours to read. Either way
+        // A root that cannot be listed is one that is not there yet, or not readable here. Either way
         // there is nothing here to be decided.
         val entries = runCatching { root.listFiles() }.getOrNull()
         if (entries == null) {

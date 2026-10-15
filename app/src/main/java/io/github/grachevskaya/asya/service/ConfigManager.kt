@@ -2,6 +2,8 @@ package io.github.grachevskaya.asya.service
 
 import android.os.Build
 import android.util.Log
+import io.github.grachevskaya.asya.MyApp
+import io.github.grachevskaya.asya.R
 import io.github.grachevskaya.asya.common.BuildConfig
 import io.github.grachevskaya.asya.common.CollectionUtils.removeIfWithCount
 import io.github.grachevskaya.asya.common.JsonConfig
@@ -41,7 +43,9 @@ object ConfigManager {
 
     private const val TAG = "ConfigManager"
     private var config = JsonConfig()
+    private var committedConfig = config.toString()
 
+    @Synchronized
     fun init() {
         val rawConfig = ServiceClient.configOrNull
 
@@ -62,10 +66,27 @@ object ConfigManager {
         }
 
         config.configVersion = BuildConfig.CONFIG_VERSION
+        committedConfig = config.toString()
     }
 
-    fun saveConfig() {
-        ServiceClient.setConfig(config.toString())
+    @Synchronized
+    fun saveConfig(): Boolean {
+        val candidate = config.toString()
+        if (ServiceClient.setConfig(candidate)) {
+            committedConfig = candidate
+            return true
+        }
+        config = JsonConfig.parse(committedConfig)
+        Log.e(TAG, "Configuration was not saved; restored the acknowledged copy")
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast
+                .makeText(
+                    MyApp.asyaApp,
+                    R.string.state_save_failed,
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+        }
+        return false
     }
 
     var detailLog: Boolean
@@ -143,10 +164,13 @@ object ConfigManager {
             saveConfig()
         }
 
+    @Synchronized
     fun importConfig(json: String) {
-        config = JsonConfig.parse(json)
-        config.configVersion = BuildConfig.CONFIG_VERSION
-        saveConfig()
+        val imported = JsonConfig.parse(json)
+        imported.configVersion = BuildConfig.CONFIG_VERSION
+        check(ServiceClient.setConfig(imported.toString())) { "Configuration was not saved by the service" }
+        config = imported
+        committedConfig = imported.toString()
     }
 
     fun hasTemplate(name: String?): Boolean = config.templates.containsKey(name)

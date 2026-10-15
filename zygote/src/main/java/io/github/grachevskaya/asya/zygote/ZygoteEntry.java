@@ -3,6 +3,8 @@ package io.github.grachevskaya.asya.zygote;
 import static io.github.grachevskaya.asya.zygote.util.Logcat.logELegacy;
 import static io.github.grachevskaya.asya.zygote.util.Logcat.logILegacy;
 
+import android.util.Log;
+
 import com.v7878.r8.annotations.DoNotObfuscate;
 import com.v7878.r8.annotations.DoNotObfuscateType;
 import com.v7878.r8.annotations.DoNotShrink;
@@ -27,6 +29,12 @@ import io.github.grachevskaya.asya.zygote.service.SystemServerHook;
  * of the zygote, and a mistake there takes the zygote down. What premain does here is small enough
  * to be harmless: take the manager apk and the
  * token out of the module directory while that descriptor is still open.
+ *
+ * The loader calls it from the process that is about to be specialized, not from the zygote itself,
+ * so nothing that installs a hook belongs here. One did, once: an ART hook installed in this window
+ * broke the specialization that followed it -- system_server's context transition failed, every boot
+ * attempt lost its zygote, and only Zygisk Next disabling itself ended the loop. A hook that has to
+ * live in the zygote can only be installed from the native side.
  */
 @SuppressWarnings("all")
 @DoNotObfuscateType
@@ -40,15 +48,13 @@ public class ZygoteEntry {
         try {
             String moduleDir = ZygoteLoader.getModuleDir();
 
-            // The sockets this process holds are what makes a fork recognisable; they are handed to
-            // the kernel off this path, because premain must stay a place that takes nothing.
-
-
             if (moduleDir != null) {
                 HostFiles.takeFromModuleDirectory(moduleDir);
             }
-        } catch (Throwable ignored) {
-            // nothing here may throw: this runs for every process the module is part of
+        } catch (Throwable th) {
+            // Nothing here may throw: this runs for every process the module is part of. A failure
+            // is logged and not swallowed, so that one of these can never hide a boot again.
+            Log.e(TAG, "premain", th);
         }
     }
 

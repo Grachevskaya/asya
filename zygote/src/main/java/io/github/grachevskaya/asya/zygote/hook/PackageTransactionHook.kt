@@ -1,12 +1,12 @@
 package io.github.grachevskaya.asya.zygote.hook
 
+import io.github.grachevskaya.asya.zygote.service.KernelPolicy
+import io.github.grachevskaya.asya.zygote.service.precomputeNativeLibs
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.DELETE_PACKAGE_HELPER_CLASS
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.INSTALL_PACKAGE_HELPER_CLASS
-import io.github.grachevskaya.asya.zygote.service.KernelPolicy
-import io.github.grachevskaya.asya.zygote.service.precomputeNativeLibs
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.PACKAGE_MANAGER_SERVICE_CLASS
 
 /**
@@ -100,7 +100,7 @@ class PackageTransactionHook : IFrameworkHook {
                 committed.javaClass.getMethod("getUid").invoke(committed) as? Int
             }.getOrNull()
         if (path.isNullOrEmpty() || uid == null) return
-        runCatching { KernelPolicy.pushApks(listOf(uid to path)) }
+        runCatching { KernelPolicy.pushApks(listOf(uid to path), fullSnapshot = false) }
             .onFailure { logW(TAG, it) { "Could not name the committed apk" } }
         /*
          * The libraries this app can load are worked out here, while the install that made it is

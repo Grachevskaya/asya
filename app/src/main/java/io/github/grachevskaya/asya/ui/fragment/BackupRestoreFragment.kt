@@ -397,19 +397,30 @@ abstract class BackupRestoreFragment : PreferenceFragmentCompat() {
                     }
                 }
 
-                if (!includeSettings || importedConfig.configVersion == CONFIG_VERSION_NO_SETTINGS) {
-                    val currentConfig = ConfigManager.getRawConfig(true)
+                val document =
+                    if (!includeSettings || importedConfig.configVersion == CONFIG_VERSION_NO_SETTINGS) {
+                        val currentConfig = ConfigManager.getRawConfig(true)
 
-                    currentConfig.scope.sync(importedConfig.scope)
-                    currentConfig.templates.sync(importedConfig.templates)
+                        currentConfig.scope.sync(importedConfig.scope)
+                        currentConfig.templates.sync(importedConfig.templates)
 
-                    ConfigManager.importConfig(currentConfig.toString())
-                } else {
-                    ConfigManager.importConfig(importedConfig.toString())
+                        currentConfig.toString()
+                    } else {
+                        importedConfig.toString()
+                    }
+
+                lifecycleScope.launch {
+                    try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            ConfigManager.importConfig(document)
+                        }
+                        showToast(android.R.string.ok)
+                        navController.navigateUp()
+                    } catch (cause: Throwable) {
+                        if (cause is kotlinx.coroutines.CancellationException) throw cause
+                        onImportFailed(cause)
+                    }
                 }
-
-                showToast(android.R.string.ok)
-                navController.navigateUp()
             }
         } catch (cause: Throwable) {
             onImportFailed(cause)

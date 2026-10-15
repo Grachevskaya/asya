@@ -189,13 +189,17 @@ public final class HostProcess {
                 @Override
                 public void onReceive(Context ctx, Intent intent) {
                     HostLog.i("The action button asked for the manager; showing it");
-                    showManager(thread, intent);
+                    // Posted, not run here: a sender that ordered the broadcast is called back when
+                    // onReceive returns, so work done synchronously is a signal an outsider can time.
+                    new Handler(android.os.Looper.getMainLooper()).post(() -> showManager(thread, intent));
                 }
             };
 
             // The secret code gets a filter of its own: a filter's data fields apply to every action
             // it carries, so a broadcast with no data can never match a filter that names a uri.
-            register(context, receiver, new IntentFilter(HostConstants.ACTION_SHOW_MANAGER));
+            // There is one entry point and it is the secret code: the module sends no action, so there
+            // is no name for anyone to ask after. The filter names no uri, so a broadcast carrying one
+            // cannot match it, and the permission keeps every application that is not the dialer out.
 
             IntentFilter code = new IntentFilter();
             code.addAction(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
@@ -203,22 +207,22 @@ public final class HostProcess {
                     : "android.provider.Telephony.SECRET_CODE");
             code.addDataScheme("android_secret_code");
             code.addDataAuthority(HostConstants.SECRET_CODE, null);
-            register(context, receiver, code);
+            register(context, receiver, code, HostConstants.BROADCAST_PERMISSION);
 
-            HostLog.i("Listening for %s and the secret code %s",
-                    HostConstants.ACTION_SHOW_MANAGER, HostConstants.SECRET_CODE);
+            HostLog.i("Listening for the secret code %s", HostConstants.SECRET_CODE);
         } catch (Throwable cause) {
             HostLog.e(cause, "Could not register the manager receiver");
         }
     }
 
-    /** Exported: the shell and the dialer are other callers, and neither is the host itself. */
-    private static void register(Context context, BroadcastReceiver receiver, IntentFilter filter) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            context.registerReceiver(receiver, filter);
-        }
+    /**
+     * Registered with a permission and no receiver flags. The permission keeps every caller but the
+     * dialer and root out. The flags are not optional: with RECEIVER_EXPORTED the receiver stops
+     * hearing a broadcast that names its own package.
+     */
+    private static void register(Context context, BroadcastReceiver receiver, IntentFilter filter,
+                                 String permission) {
+        context.registerReceiver(receiver, filter, permission, null);
     }
 
     /** Starts the manager's activity in the host's own task, carrying what it checks before showing. */
@@ -242,14 +246,13 @@ public final class HostProcess {
             }
 
             Intent intent = new Intent();
+            // The host's own package, resolved at install rather than written here: a build that
+            // renamed SystemUI would not answer to the constant.
             intent.setClassName(HostConstants.HOST_PACKAGE, activity);
             intent.putExtra(HostConstants.EXTRA, from.getIntExtra(HostConstants.EXTRA, 1));
 
             // A typed code carries nothing else, so a token that did not travel is filled in from the
             // one both halves share.
-            String token = from.getStringExtra(HostConstants.EXTRA_TOKEN);
-            if (token == null) token = HostFiles.token();
-            intent.putExtra(HostConstants.EXTRA_TOKEN, token);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
 
             systemContext(thread).startActivity(intent);
@@ -355,7 +358,17 @@ public final class HostProcess {
         boolean notInRecents = (activity.flags & 0x00800000) != 0;
         boolean ownTask = activity.launchMode == 3 || activity.launchMode == 2;
 
-        return !noHistory && !notInRecents && !ownTask;
+        // Sui's two conditions, and the reason they are needed: the activity has to run in the host's
+        // own process, and it has to be a plain standard one. A singleTop, a singleInstance or a
+        // trampoline is not the window the manager can be built on -- picking one of those is how a
+        // request ends up opening an activity that shows nothing.
+        boolean ownProcess = activity.processName == null
+                || activity.applicationInfo == null
+                || HostConstants.HOST_PACKAGE.equals(activity.processName)
+                || HostConstants.HOST_PACKAGE.equals(activity.applicationInfo.processName);
+        boolean standard = activity.launchMode == 0;   // ActivityInfo.LAUNCH_MULTIPLE
+
+        return !noHistory && !notInRecents && !ownTask && ownProcess && standard;
     }
 
     private static String anyHostActivity(Context context) {

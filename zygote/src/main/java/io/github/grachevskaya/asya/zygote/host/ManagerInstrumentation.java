@@ -411,9 +411,6 @@ public class ManagerInstrumentation extends Instrumentation {
         if (cl != null) extras.setClassLoader(cl);
         if (!isMarked(extras)) return null;
 
-        String asked = extras.getString(HostConstants.EXTRA_TOKEN);
-        String real = HostFiles.token();
-        if (real == null || !real.equals(asked)) return null;
 
         try {
             android.app.Application application = android.app.ActivityThread

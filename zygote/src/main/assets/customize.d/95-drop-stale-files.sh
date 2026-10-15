@@ -13,4 +13,6 @@ for f in "$LIVE"/classes*.dex; do
     *) rm -f "$f" ;;
   esac
 done
-rm -f "$LIVE/boot-completed.sh" "$LIVE/sepolicy.rule"
+# Names an older package wrote and nothing reads any more: the host package it resolved for itself,
+# and the launch token that was replaced by the receiver's permission.
+rm -f "$LIVE/boot-completed.sh" "$LIVE/sepolicy.rule" "$LIVE/system_ui" "$LIVE/state/host_token"

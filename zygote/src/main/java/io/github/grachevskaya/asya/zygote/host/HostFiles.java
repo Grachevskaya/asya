@@ -15,7 +15,6 @@ public final class HostFiles {
 
     private static FileDescriptor apkDescriptor;
     private static String apkPath;
-    private static String token;
     private static java.util.List<java.io.RandomAccessFile> heldState;
 
     /** The reported directory is there for the first process only; later forks inherit a cleared field. */
@@ -26,29 +25,17 @@ public final class HostFiles {
             }
             if (moduleDir == null) return;
 
+            // The copy beside the module is read by the host, which is allowed there. Reading it
+            // from here would leave a denial naming this module in the kernel log on every start, and
+            // it is not needed: this process opens the module's own copy while the directory is still
+            // open and hands the descriptor on, which is what the host reads the apk through.
             File apk = new File(moduleDir, io.github.grachevskaya.asya.common.StatePaths.MANAGER_APK_NAME);
-
-            // The host opens this path itself: /proc/self/fd/<n> is a path it may open, and the
-            // permission that matters is the one on the file, which the module sets for it.
-            File beside = openManagerApk();
-            FileInputStream stream = new FileInputStream(beside != null ? beside : apk);
+            FileInputStream stream = new FileInputStream(apk);
             apkDescriptor = stream.getFD();
             openedApk = stream;
             apkPath = "/proc/self/fd/" + descriptorNumber(stream);
         } catch (Throwable ignored) {
             return;
-        }
-
-        try {
-            File tokenFile = new File(moduleDir, "state/host_token");
-            byte[] bytes = new byte[(int) Math.min(tokenFile.length(), 128)];
-            try (FileInputStream in = new FileInputStream(tokenFile)) {
-                int read = in.read(bytes);
-                if (read > 0) {
-                    token = new String(bytes, 0, read, java.nio.charset.StandardCharsets.UTF_8).trim();
-                }
-            }
-        } catch (Throwable ignored) {
         }
     }
 
@@ -66,24 +53,13 @@ public final class HostFiles {
         return apkPath;
     }
 
-    public static String token() {
-        return token;
-    }
 
-    /**
-     * The manager apk, opened while this process is still root. Nothing reads it by name afterwards:
-     * the host cannot read under /data/adb, and there is no second copy anywhere -- what is carried
-     * across the specialization is the descriptor.
-     */
-    private static File openManagerApk() {
-        try {
-            File apk = new File(io.github.grachevskaya.asya.common.StatePaths.MODULE_STATE_ROOT, "manager.apk");
-            if (!apk.isFile()) return null;
-            return apk;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
+    /** The directory the loader reported, kept for the reads that come later. */
+
+
+
+
+
 
     /** The module directory, by whichever descriptor still points at it. */
     private static String findOpenModuleDirectory() {

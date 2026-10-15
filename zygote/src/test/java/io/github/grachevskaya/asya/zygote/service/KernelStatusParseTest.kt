@@ -15,9 +15,14 @@ class KernelStatusParseTest {
 
     /** One record, in the order the kernel writes it, with every field a value of its own. */
     private fun status(overrides: Map<Int, Long> = emptyMap()): ByteArray {
-        val bytes = ByteArray(128)
+        val bytes = ByteArray(144)
 
         writeI32(bytes, 0, magic)
+        writeI32(bytes, 4, 144L)
+        writeI32(bytes, 128, 0x03020100L)
+        writeI32(bytes, 132, 0x87868584L)
+        writeI32(bytes, 136, 0x0b0a0908L)
+        writeI32(bytes, 140, 0xfffefdfcL)
 
         // version, flags, then the native and compat pairs, each a u32 of its own.
         (1L..13L).forEach { field ->
@@ -87,6 +92,33 @@ class KernelStatusParseTest {
         assertEquals("11", status["lastError"])
         assertEquals("12", status["apkUpdates"])
         assertEquals("13", status["vaBits"])
+    }
+
+    @Test
+    fun allFourTokenWordsSurviveUnsignedStatusDecoding() {
+        val parsed = parse(status())
+        assertEquals("50462976", parsed["token0"])
+        assertEquals(0x87868584L.toString(), parsed["token1"])
+        assertEquals(0x0b0a0908L.toString(), parsed["token2"])
+        assertEquals(0xfffefdfcL.toString(), parsed["token3"])
+    }
+
+    @Test
+    fun aTruncatedBackingArrayCannotBeReadBeyondItsEnd() {
+        assertTrue(KernelPolicy.parseStatus(ByteArray(8), 0, 8).getValue("state").contains("short"))
+    }
+
+    @Test
+    fun socketSecretRoundTripsTheSameWordsThatNetlinkReports() {
+        val salt = byteArrayOf(0, 1, 2, 3, -124, -123, -122, -121, 8, 9, 10, 11, -4, -3, -2, -1)
+        val words = StateToken.words(salt)
+        val reported =
+            parse(status()).let { result ->
+                intArrayOf(*(0..3).map { result.getValue("token$it").toLong().toInt() }.toIntArray())
+            }
+        assertTrue(words.contentEquals(reported))
+        assertEquals("000102038485868708090a0bfcfdfeff", StateToken.name(words))
+        assertEquals(StateToken.name(words), StateToken.name(reported))
     }
 
     @Test

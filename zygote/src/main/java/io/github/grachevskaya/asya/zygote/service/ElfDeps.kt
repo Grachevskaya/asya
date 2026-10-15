@@ -34,7 +34,7 @@ object ElfDeps {
             if (!out.add(name)) continue
             val file = File(dir, name)
             if (!file.isFile) continue
-            val needed = needed(file) ?: continue
+            val needed = needed(file) ?: return null
             for (dep in needed) {
                 if (dep !in out && File(dir, dep).isFile) queue.add(dep)
             }

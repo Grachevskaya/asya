@@ -122,9 +122,11 @@ class StatsFragment : Fragment(R.layout.fragment_stats) {
     private fun onMenuOptionSelected(item: MenuItem) {
         when (item.itemId) {
             R.id.menu_delete -> {
-                ServiceClient.clearFilterStats()
-                showToast(android.R.string.ok)
-                updateLogs()
+                runCatching { ServiceClient.clearFilterStats() }
+                    .onSuccess {
+                        showToast(android.R.string.ok)
+                        updateLogs()
+                    }.onFailure { showToast(R.string.state_save_failed) }
             }
 
             R.id.menu_info -> {

@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="state_save_failed">State could not be saved. Please retry when the service is ready.</string>
     <string name="app_name" translatable="false">Asya</string>
 
     <string name="title_home">Home</string>
     <string name="title_logs">Logs</string>
     <string name="title_settings">Settings</string>
     <string name="kernel_card_absent">Kernel module not loaded</string>
-    <string name="kernel_card_detail">apk hooks %1$s (failed this run %2$s)</string>
+    <string name="kernel_card_detail">APK/library records %1$s (failed this run %2$s)</string>
     <string name="title_template_manage">Manage templates</string>
     <string name="title_template_settings">Template settings</string>
     <string name="title_app_manage">Manage apps</string>

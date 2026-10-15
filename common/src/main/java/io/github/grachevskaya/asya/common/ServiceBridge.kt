@@ -81,10 +81,7 @@ object ServiceBridge {
     @Volatile
     var configSink: ((String) -> Unit)? = null
 
-    /**
-     * Called once the handshake is done. The manager keeps the configuration, so this is the moment
-     * it hands one over: the service starts empty and would otherwise hide nothing until next save.
-     */
+    /** Called once the handshake is done. The manager reloads the service-owned configuration. */
     @Volatile
     var onServiceReady: (() -> Unit)? = null
 
@@ -222,8 +219,8 @@ object ServiceBridge {
                 CODE_CONFIG_JSON -> reply.writeLargeString(service.configJson() ?: "")
 
                 CODE_CONFIG_SET -> {
-                    service.setConfig(data.readLargeString() ?: "")
-                    reply.writeInt(PAYLOAD_BUNDLE)
+                    val saved = runCatching { service.setConfig(data.readLargeString() ?: "") }.getOrDefault(false)
+                    reply.writeInt(if (saved) 1 else 0)
                 }
 
                 CODE_FILTER_COUNT ->
@@ -232,8 +229,7 @@ object ServiceBridge {
                 CODE_FILTER_STATS -> reply.writeBundle(Bundle().apply { putString("json", service.filterStatsJson()) })
 
                 CODE_FILTER_CLEAR -> {
-                    service.clearFilterStats()
-                    reply.writeInt(0)
+                    reply.writeInt(if (runCatching { service.clearFilterStats() }.isSuccess) 1 else 0)
                 }
 
                 CODE_MANAGER_BINDER -> {
@@ -396,10 +392,17 @@ object ServiceBridge {
                 values
             }
 
-        override fun configJson(): String? = callText(CODE_CONFIG_JSON)
+        override fun configJson(): String? = callText(CODE_CONFIG_JSON)?.takeIf { it.isNotBlank() }
 
         override fun clearFilterStats() {
-            call(CODE_FILTER_CLEAR)
+            val data = Parcel.obtain()
+            val reply = Parcel.obtain()
+            try {
+                check(binder.transact(CODE_FILTER_CLEAR, data, reply, 0) && reply.readInt() == 1) { "Could not persist cleared statistics" }
+            } finally {
+                data.recycle()
+                reply.recycle()
+            }
         }
 
         override fun setManagerBinder(inbox: android.os.IBinder) {
@@ -424,7 +427,7 @@ object ServiceBridge {
 
                 try {
                     data.writeLargeString(json)
-                    binder.transact(CODE_CONFIG_SET, data, reply, 0)
+                    binder.transact(CODE_CONFIG_SET, data, reply, 0) && reply.readInt() == 1
                 } finally {
                     reply.recycle()
                     data.recycle()
