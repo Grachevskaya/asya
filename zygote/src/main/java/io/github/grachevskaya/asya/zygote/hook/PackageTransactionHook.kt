@@ -6,6 +6,7 @@ import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.DELETE_PACKAGE_HELPER_CLASS
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.INSTALL_PACKAGE_HELPER_CLASS
 import io.github.grachevskaya.asya.zygote.service.KernelPolicy
+import io.github.grachevskaya.asya.zygote.service.precomputeNativeLibs
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.PACKAGE_MANAGER_SERVICE_CLASS
 
 /**
@@ -101,6 +102,16 @@ class PackageTransactionHook : IFrameworkHook {
         if (path.isNullOrEmpty() || uid == null) return
         runCatching { KernelPolicy.pushApks(listOf(uid to path)) }
             .onFailure { logW(TAG, it) { "Could not name the committed apk" } }
+        /*
+         * The libraries this app can load are worked out here, while the install that made it is
+         * still running: reading the app's directory afterwards is what something watching that
+         * directory would see, and the pushes that follow only read what is remembered.
+         */
+        val name =
+            runCatching {
+                committed.javaClass.getMethod("getPackageName").invoke(committed) as? String
+            }.getOrNull()
+        if (!name.isNullOrEmpty()) service.precomputeNativeLibs(name, 0)
     }
 
     private fun hookRemove(

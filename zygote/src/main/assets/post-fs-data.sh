@@ -5,6 +5,12 @@ MODDIR=${0%/*}
 LOG="$MODDIR/state/sync.log"
 mkdir -p "$MODDIR/state"
 
+# What the service worked out last time about the apps' libraries, and what it will add to. It is
+# read before the user's storage is decrypted, so it has to be writable by the service (system) and
+# not only by root.
+: > "$MODDIR/state/native_libs.json" 2>/dev/null
+chmod 666 "$MODDIR/state/native_libs.json" 2>/dev/null
+
 # A flash copies files over the module directory and deletes nothing, so whatever an older package
 # left behind stays there -- and the loader reads every classes*.dex it finds, which means a stale
 # dex keeps the code inside it running after that code has left the package. Drop what this package
