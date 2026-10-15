@@ -1,0 +1,7 @@
+# The state beside the module is served over a unix socket, the way Sui carries its own: two
+# processes and the socket between them, which is the whole rendezvous. No service name is
+# registered -- a name that differs with every installation could never be granted.
+#
+# The root domain is not written down here: it is whatever this device has, and the installer fills
+# it in from what it is running as.
+allow system_server %su_secon% unix_stream_socket { connectto getattr getopt read write }

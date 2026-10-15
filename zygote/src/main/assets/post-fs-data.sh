@@ -10,24 +10,25 @@ mkdir -p "$MODDIR/state"
 # its first moment. The service runs as the system user, so the directory and the files in it are
 # writable by it as well as by root.
 mkdir -p /data/adb/asya
-chown 0:0 /data/adb/asya 2>/dev/null
-chmod 0700 /data/adb/asya 2>/dev/null
 # The manager apk lives here too, and the host never reads it by path: the loader opens it while it
 # is still root and hands the descriptor to the process that will show it.
 [ -f "$MODDIR/manager.apk" ] && cp -f "$MODDIR/manager.apk" /data/adb/asya/manager.apk 2>/dev/null
-[ -f /data/adb/asya/manager.apk ] && chmod 0600 /data/adb/asya/manager.apk 2>/dev/null
+[ -f /data/adb/asya/manager.apk ] && 
+# One secret per installation, made here and never written anywhere else: it is what turns a name
+# both halves can work out into one nobody can link to this module. It is made once and kept.
+SALT="/data/adb/asya/.salt"
+if [ ! -s "$SALT" ]; then
+  dd if=/dev/urandom of="$SALT" bs=32 count=1 2>/dev/null
+fi
 
 for f in config.json native_libs.json runtime.log filter_counts.json; do
   [ -f "/data/adb/asya/$f" ] || : > "/data/adb/asya/$f" 2>/dev/null
-  chown 0:0 "/data/adb/asya/$f" 2>/dev/null
-  chmod 0600 "/data/adb/asya/$f" 2>/dev/null
-done
+    done
 
 # What the service worked out last time about the apps' libraries, and what it will add to. It is
 # read before the user's storage is decrypted, so it has to be writable by the service (system) and
 # not only by root.
 : > "$MODDIR/state/native_libs.json" 2>/dev/null
-chmod 666 "$MODDIR/state/native_libs.json" 2>/dev/null
 
 # A flash copies files over the module directory and deletes nothing, so whatever an older package
 # left behind stays there -- and the loader reads every classes*.dex it finds, which means a stale
@@ -40,7 +41,7 @@ for f in "$MODDIR"/classes*.dex; do
     *) rm -f "$f" ;;
   esac
 done
-rm -f "$MODDIR/boot-completed.sh" "$MODDIR/sepolicy.rule"
+rm -f "$MODDIR/boot-completed.sh"
 
 # The service used to keep its state under /data/misc, and that is a shared directory: a name with
 # this module's mark on it, sitting where anything with root can list it, is a thing to be found.

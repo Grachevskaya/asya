@@ -38,11 +38,12 @@ public class ZygoteEntry {
     @DoNotShrink
     public static void premain() throws Throwable {
         try {
+            String moduleDir = ZygoteLoader.getModuleDir();
+
             // The sockets this process holds are what makes a fork recognisable; they are handed to
             // the kernel off this path, because premain must stay a place that takes nothing.
-            io.github.grachevskaya.asya.zygote.service.ZygoteSockets.INSTANCE.pushLater();
 
-            String moduleDir = ZygoteLoader.getModuleDir();
+
             if (moduleDir != null) {
                 HostFiles.takeFromModuleDirectory(moduleDir);
             }

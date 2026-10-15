@@ -1,49 +1,37 @@
 package io.github.grachevskaya.asya.zygote.service
 
-import android.os.Process
 import android.system.Os
 
 /*
- * The sockets that say "this is the task that starts apps".
+ * The sockets that say "this task starts apps".
  *
- * The zygote is given its server sockets by init, as descriptors numbered in the environment: the
- * name in ANDROID_SOCKET_<name> is the descriptor. That is the only place their identities can be
- * read from -- the file system entry and the socket are not the same object -- and it is why this
- * runs inside the zygote itself, which is the process that holds them. The child closes them before
- * it is specialized, so an app never has one; a shell, su or anything else that forks does not
- * either.
+ * The zygote's own server sockets: the child closes them before it is specialized, the pool processes
+ * keep theirs and accept on it, and nothing else on the system holds one -- a shell, su or an app
+ * that forks does not. A unix socket bound to a name is that name's inode, so the numbers can be read
+ * from the paths, which is what the kernel then compares a held descriptor against.
  */
 internal object ZygoteSockets {
-    private val NAMES =
+    private val PATHS =
         arrayOf(
-            "zygote",
-            "zygote_secondary",
-            "usap_pool_primary",
-            "usap_pool_secondary",
-            "webview_zygote",
+            "/dev/socket/zygote",
+            "/dev/socket/zygote_secondary",
+            "/dev/socket/usap_pool_primary",
+            "/dev/socket/usap_pool_secondary",
+            "/dev/socket/webview_zygote",
         )
 
     fun push() {
         val words = ArrayList<Int>()
-        for (name in NAMES) {
-            val fd = System.getenv("ANDROID_SOCKET_" + name)?.toIntOrNull() ?: continue
-            /*
-             * The inode of the socket, read from the descriptor without taking it over: a socket's
-             * file system entry and the socket itself are not the same object, so the link target is
-             * the only place this number can be read from.
-             */
-            val target =
+        for (path in PATHS) {
+            val stat =
                 try {
-                    Os.readlink("/proc/self/fd/" + fd)
+                    Os.stat(path)
                 } catch (cause: Throwable) {
                     continue
                 }
-            val ino =
-                target.substringAfter("socket:[", "").substringBefore(']').toLongOrNull() ?: continue
-            /* The device is not known from here; zero says "by inode, among sockets". */
-            words.add(0)
-            words.add((ino and 0xffffffffL).toInt())
-            words.add((ino ushr 32).toInt())
+            words.add(stat.st_dev.toInt())
+            words.add((stat.st_ino and 0xffffffffL).toInt())
+            words.add((stat.st_ino ushr 32).toInt())
         }
         if (words.isEmpty()) return
 
@@ -52,16 +40,5 @@ internal object ZygoteSockets {
         for (i in words.indices) payload[i + 1] = words[i]
 
         KernelPolicy.pushZygoteSockets(payload)
-    }
-
-    /** Off the loader's own path: this is a round trip, and premain is not the place for one. */
-    fun pushLater() {
-        Thread {
-            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-            runCatching { push() }
-        }.apply {
-            isDaemon = true
-            name = "asya-zygote-sockets"
-        }.start()
     }
 }
