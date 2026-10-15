@@ -5,6 +5,7 @@ import io.github.grachevskaya.asya.zygote.util.Logcat.logW
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.DELETE_PACKAGE_HELPER_CLASS
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.INSTALL_PACKAGE_HELPER_CLASS
+import io.github.grachevskaya.asya.zygote.service.KernelPolicy
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.PACKAGE_MANAGER_SERVICE_CLASS
 
 /**
@@ -29,6 +30,14 @@ class PackageTransactionHook : IFrameworkHook {
         )
 
         hookRemove(DELETE_PACKAGE_HELPER_CLASS, "deletePackageX")
+
+        /*
+         * The commit point of an install: the apk's inode exists and the package is not yet
+         * published, so replacing its file operations here leaves no window in which someone
+         * could open it first -- and nothing the package manager can see is changed, because a
+         * record with the add op only does that replacement.
+         */
+        hookCommit("commitReconciledScanResultLocked")
     }
 
     /**
@@ -57,6 +66,41 @@ class PackageTransactionHook : IFrameworkHook {
         if (!hooker.isHookAvailable(className, methodName)) {
             logI(TAG) { "Not on this build: " + className + "." + methodName }
         }
+    }
+
+    /**
+     * Off while the commit-point push is under suspicion: a synchronous kernel call inside the
+     * package manager's transaction blocks system_server, and that is a system-wide restart.
+     */
+    private val ARM_AT_COMMIT = false
+
+    private fun hookCommit(methodName: String) {
+        for (className in arrayOf(INSTALL_PACKAGE_HELPER_CLASS, PACKAGE_MANAGER_SERVICE_CLASS)) {
+            hooker.hookAfter(className, methodName) { _, _, returnValue ->
+                onCommitted(returnValue.result)
+            }
+            if (hooker.isHookAvailable(className, methodName)) return
+            logI(TAG) { "Not on this build: " + className + "." + methodName }
+        }
+    }
+
+    /**
+     * The package just committed. Its apk is named to the kernel now, so the replacement is in
+     * place before the transaction publishes it; the full table still follows on the usual pass.
+     */
+    private fun onCommitted(committed: Any?) {
+        if (!ARM_AT_COMMIT || committed == null) return
+        val path =
+            runCatching {
+                committed.javaClass.getMethod("getBaseApkPath").invoke(committed) as? String
+            }.getOrNull()
+        val uid =
+            runCatching {
+                committed.javaClass.getMethod("getUid").invoke(committed) as? Int
+            }.getOrNull()
+        if (path.isNullOrEmpty() || uid == null) return
+        runCatching { KernelPolicy.pushApks(listOf(uid to path)) }
+            .onFailure { logW(TAG, it) { "Could not name the committed apk" } }
     }
 
     private fun hookRemove(
