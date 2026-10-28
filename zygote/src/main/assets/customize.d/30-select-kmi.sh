@@ -59,10 +59,4 @@ else
   ui_print "!   su -c 'mv $MODPATH/ko/tosya.ko.try $MODPATH/ko/tosya.ko && reboot'"
 fi
 
-set_perm_recursive "$MODPATH" 0 0 0755 0644
-for f in "$MODPATH"/*.sh; do chmod 0755 "$f"; done
-[ -f "$MODPATH/ko/tosya.ko" ] && chmod 0644 "$MODPATH/ko/tosya.ko"
 
-[ -f "$MODPATH/lkmloader" ] && chmod 0755 "$MODPATH/lkmloader"
-
-ui_print "- Done"

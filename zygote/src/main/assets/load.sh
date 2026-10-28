@@ -13,23 +13,17 @@ tosya_load() {
     return 0
   fi
 
-  # The installed KernelSU loader is used where it exists; where it does not, the loader the
-  # package carries takes its place. A load that fails is not retried through the other one, and no
-  # shell-evaluated parameter file is involved.
-  if [ -x /data/adb/ksud ]; then
-    loader=ksud
-    /data/adb/ksud insmod "$ko"
-    rc=$?
-  elif [ -x "$moddir/lkmloader" ]; then
-    loader=lkmloader
-    "$moddir/lkmloader" "$ko"
-    rc=$?
-  else
-    echo "[load] no ksud or bundled lkmloader"
+  # bin/lkmloader: the install script restores the mode the tree's normalisation takes away.
+  loader="$moddir/bin/lkmloader"
+  if [ ! -x "$loader" ]; then
+    echo "[load] no executable loader at $loader"
     return 1
   fi
+  "$loader" "$ko"
+  rc=$?
   echo "[load] $loader rc=$rc $(date '+%m-%d %H:%M:%S')"
   if [ "$rc" -eq 0 ] || lsmod | grep -q '^tosya '; then
+    mkdir -p "$moddir/state" 2>/dev/null
     : > "$marker" 2>/dev/null
     return 0
   fi
