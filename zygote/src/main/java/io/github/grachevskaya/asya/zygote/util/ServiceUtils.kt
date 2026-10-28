@@ -73,9 +73,14 @@ object ServiceUtils {
             val newTrace =
                 throwable.stackTrace.filter { item ->
                     !item.className.containsMultiple(
+                        // Ours, the hooking library, the method-handle plumbing, and the bridge some
+                        // hook frameworks put between a caller and the original method: a frame that
+                        // names any of them says a hook took part, which the caller was not told.
                         "BulkHooker",
                         "com.v7878",
                         "MethodHandle",
+                        "io.github.grachevskaya.asya",
+                        "HookBridge",
                     ) &&
                         !item.fileName.containsMultiple(
                             "r8-map-id-",

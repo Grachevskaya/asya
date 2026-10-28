@@ -19,8 +19,6 @@ import io.github.grachevskaya.asya.zygote.hook.BridgeHook
 import io.github.grachevskaya.asya.zygote.hook.BroadcastHook
 import io.github.grachevskaya.asya.zygote.hook.IFrameworkHook
 import io.github.grachevskaya.asya.zygote.hook.PackageTransactionHook
-import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget29
-import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget30
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget31
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget33
 import io.github.grachevskaya.asya.zygote.hook.PmsHookTarget34
@@ -60,13 +58,10 @@ class AsyaService(
         invalidatePackageCaches()
 
         // The push that follows is what moves the kernel's numbers, and they are read on its way back:
-        // an install or a removal is one of the moments the table is handed over again.
-        /*
-         * Read here, before the user's storage is decrypted: the configuration lives beside the
-         * module, so a boot has the rules from its first moment. A manager that changes anything
-         * pushes the change over the bridge, and that is what writes this file.
-         */
-        precomputeAllNativeLibs()
+        // an install or a removal is one of the moments the table is handed over again. The passes
+        // coalesce, so a burst of transactions is one push. The library pass is not asked for here:
+        // an install that brings new libraries has them worked out by the transaction that made it,
+        // and the one full pass a boot runs is the unlock's work rather than every package change's.
         pushPolicyToKernel()
         announcePackagesChanged()
     }
@@ -139,11 +134,16 @@ class AsyaService(
      * Everything resolved from the package list, dropped so the next pass resolves it again: a
      * package that was installed, replaced or removed has a different owner than the last pass
      * thought.
+     *
+     * The hide table is not dropped here. It answers for the configuration, which a package change
+     * does not touch, and clearing it on every install left hidden packages visible until the next
+     * query rebuilt it -- the intermittent mismatch this split exists to prevent.
      */
     private fun invalidatePackageCaches() {
-        invalidateConfigCaches()
         PackageModelReader.cachedPackageModel = null
         clearNativeLibCache()
+        webviewProviderCache = null
+        browserCache.clear()
     }
 
     /** The service reads persisted state first; only an acknowledged snapshot is handed to the manager. */
@@ -156,7 +156,13 @@ class AsyaService(
             .getOrDefault(false)
 
     val hooker = BulkHooker()
-    val dataHolder = AsyaServiceDataHolder()
+
+    /**
+     * The table the query path reads. Its keys are uids, so it is handed the one place that already
+     * knows which uid a package name is: the parsed package table. Asking the package manager from
+     * inside a package manager hook would re-enter the hook that is asking.
+     */
+    val dataHolder = AsyaServiceDataHolder { packageName -> packageUid(packageName) }
 
     private val loggerLock = Any()
 
@@ -183,10 +189,16 @@ class AsyaService(
         }
     }
 
+    /**
+     * Every two seconds, and on the way in and out of the process: the counts the query path has
+     * accumulated land in the ledger, which is written and sent once per pass rather than once per
+     * query.
+     */
     private fun flushFilterCounts() {
         if (!stateReady || !countFlushQueued.compareAndSet(false, true)) return
         stateExecutor.execute {
             try {
+                dataHolder.flushPendingCounts()
                 persistFilterCounts()
                 flushNativeLibCache()
             } finally {
@@ -242,7 +254,10 @@ class AsyaService(
 
         logI(TAG) { "Asya service initialized in mode ${StatusReporter.managerWorkMode}" }
 
-        // APK discovery must not depend on a manager config or a working state daemon.
+        // APK discovery must not depend on a manager config or a working state daemon. The pairs go
+        // out now, because none of them is read from the user's half; the apk table is a full
+        // enumeration of that half, so the pass leaves the table to the unlock and the library pass
+        // below waits for it on a thread of its own -- which is what keeps this constructor short.
         pushPolicyToKernel()
         precomputeAllNativeLibs()
         startStateBootstrap()
@@ -293,17 +308,12 @@ class AsyaService(
             frameworkHooks.add(PmsHookTarget34())
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             frameworkHooks.add(PmsHookTarget33())
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            frameworkHooks.add(PmsHookTarget31())
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            frameworkHooks.add(PmsHookTarget30())
         } else {
-            frameworkHooks.add(PmsHookTarget29())
+            // Android 12 is the oldest release this module runs on.
+            frameworkHooks.add(PmsHookTarget31())
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            frameworkHooks.add(AppDataIsolationHook())
-        }
+        frameworkHooks.add(AppDataIsolationHook())
 
         frameworkHooks.add(ActivityHook())
         frameworkHooks.add(BroadcastHook())
@@ -487,7 +497,9 @@ class AsyaService(
 
     /** Whatever is gathered leaves before the process does. */
     fun flushForShutdown() {
-        // The process may exit before its scheduled worker runs: persist this snapshot now.
+        // The process may exit before its scheduled worker runs: land what is counted and persist
+        // this snapshot now.
+        dataHolder.flushPendingCounts()
         persistFilterCounts()
         logI(TAG) { "Counts flushed for shutdown" }
     }
@@ -502,6 +514,9 @@ class AsyaService(
      * no change at all costs one comparison.
      */
     fun onUsersChanged() {
+        // A user that was just added has a tree nothing was registered on, so the kernel is asked to look
+        // for the protected directories again before anything is answered from it.
+        KernelPolicy.refresh()
         pushPolicyToKernel()
         announcePackagesChanged()
     }

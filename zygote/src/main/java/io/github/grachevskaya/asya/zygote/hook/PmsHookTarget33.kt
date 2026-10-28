@@ -3,111 +3,120 @@ package io.github.grachevskaya.asya.zygote.hook
 import android.os.Binder
 import android.os.Build
 import androidx.annotation.RequiresApi
-import io.github.grachevskaya.asya.common.CollectionUtils.firstOrNullWithType
-import io.github.grachevskaya.asya.common.OSUtils
-import io.github.grachevskaya.asya.common.Utils
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.getCallingApps
 import io.github.grachevskaya.asya.zygote.util.ServiceUtils.getPackageNameFromPackageSettings
-import io.github.grachevskaya.asya.zygote.util.ZLUtils.args
-import io.github.grachevskaya.asya.zygote.util.ZLUtils.findMethod
 import io.github.grachevskaya.asya.zygote.util.ZLUtils.getArgument
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.APPS_FILTER_IMPL_CLASS
+import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.CHANGED_PACKAGES_TRACKER_CLASS
 import io.github.grachevskaya.asya.zygote.util.ZygoteConstants.COMPUTER_ENGINE_CLASS
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 open class PmsHookTarget33 : PmsHookTargetBase() {
     override val TAG = "PmsHookTarget33"
 
-    protected open val getPackagesForUidMethod by lazy {
-        findMethod(
-            "com.android.server.pm.Computer",
-            "getPackagesForUid",
-            isDeclared = false,
-            systemClassLoader = true,
-            Int::class.java,
-        )
-    }
-
-    @Suppress("UNCHECKED_CAST")
     override fun load() {
         logI(TAG) { "Load hook" }
 
         hooker.apply {
-            // Samsung related fix
-            if (OSUtils.isSamsung()) {
-                hookAfter(
-                    COMPUTER_ENGINE_CLASS,
-                    "generatePackageInfo",
-                ) { methodName, frame, returnValue ->
-                    applyPackageHiding(
-                        methodName,
-                        returnValue,
-                        { Binder.getCallingUid() },
-                        { getPackageNameFromPackageSettings(frame.getArgument(1)) },
-                        ::getCallingApps,
-                        null,
-                    )
-                }
-            } else {
-                hookBefore(
-                    COMPUTER_ENGINE_CLASS,
-                    "addPackageHoldingPermissions",
-                ) { methodName, frame, returnValue ->
-                    applyPackageHiding(
-                        methodName,
-                        returnValue,
-                        { Binder.getCallingUid() },
-                        { getPackageNameFromPackageSettings(frame.getArgument(2)) },
-                        ::getCallingApps,
-                        null,
-                    )
-                }
+            // The body the framework's own permission checks run in front of: the name is rewritten
+            // here and nowhere else, so a denied caller keeps its denial and a hidden package is the
+            // miss an uninstalled one is.
+            hookBefore(
+                COMPUTER_ENGINE_CLASS,
+                "getPackageInfoInternalBody",
+                restore = { frame -> putBackArgument(frame, 1) },
+            ) { _, frame, _ ->
+                applyNameRewrite(frame, 1, callerUidOf(frame, 4))
             }
 
-            hookAfter(
+            // The flag adjustment the body runs in front of: it reads the name to decide which
+            // flags apply, so it is rewritten here as well, and the body it then calls sees no more
+            // of the real name than it does for a package that is not installed.
+            hookBefore(
                 COMPUTER_ENGINE_CLASS,
-                "getPackageInfoInternal",
-            ) { methodName, frame, returnValue ->
-                applyPackageHiding(
-                    methodName,
-                    returnValue,
-                    { frame.args.firstOrNullWithType() },
-                    { frame.args.firstOrNullWithType() },
-                    ::getCallingApps,
-                    null,
-                )
+                "updateFlagsForPackage",
+                argumentCount = 3,
+                restore = { frame -> putBackArgument(frame, 3) },
+            ) { _, frame, _ ->
+                applyNameRewrite(frame, 3, callerUidOf(frame, 2))
             }
 
-            hookAfter(
+            // The funnel every ApplicationInfoFlags query takes -- getApplicationInfo and the
+            // internal callers alike -- so the flag path is masked before the body picks a branch,
+            // and the body site below then sees a masked name and leaves it alone.
+            hookBefore(
                 COMPUTER_ENGINE_CLASS,
-                "getApplicationInfoInternal",
-            ) { methodName, frame, returnValue ->
-                applyPackageHiding(
-                    methodName,
-                    returnValue,
-                    { frame.args.firstOrNullWithType() },
-                    { frame.args.firstOrNullWithType() },
-                    ::getCallingApps,
-                    null,
-                )
+                "getNamesForUids",
+                restore = { frame -> restoreUidArray(frame, 1) },
+            ) { _, frame, _ ->
+                applyUidArrayRewrite(frame, 1, Binder.getCallingUid())
+            }
+
+            // The change history has no caller: whatever is written is readable by everyone later, so a
+            // hidden name is never written. A release whose tracker is shaped differently simply does not
+            // carry this method, and the hook does not install.
+            hookBefore(
+                CHANGED_PACKAGES_TRACKER_CLASS,
+                "addPackageChange",
+            ) { _, frame, returnValue ->
+                skipChangeRecord(returnValue, frame.getArgument(0) as? String)
+            }
+
+            // The uid channel: a package's uid answers for the package, so a caller that may not
+            // see it gets the answer a uid nothing ever had gets.
+            hookBefore(
+                COMPUTER_ENGINE_CLASS,
+                "getNameForUid",
+                restore = { frame -> restoreUid(frame, 1) },
+            ) { _, frame, _ ->
+                applyUidRewrite(frame, 1, Binder.getCallingUid())
             }
 
             hookBefore(
+                COMPUTER_ENGINE_CLASS,
+                "getPackagesForUid",
+                restore = { frame -> restoreUid(frame, 1) },
+            ) { _, frame, _ ->
+                applyUidRewrite(frame, 1, Binder.getCallingUid())
+            }
+
+            hookBefore(
+                COMPUTER_ENGINE_CLASS,
+                "getApplicationInfoInternal",
+                restore = { frame -> putBackArgument(frame, 1) },
+            ) { _, frame, _ ->
+                applyNameRewrite(frame, 1, callerUidOf(frame, 3))
+            }
+
+            hookBefore(
+                COMPUTER_ENGINE_CLASS,
+                "getApplicationInfoInternalBody",
+                restore = { frame -> putBackArgument(frame, 1) },
+            ) { _, frame, _ ->
+                applyNameRewrite(frame, 1, callerUidOf(frame, 3))
+            }
+
+            // A generator that builds a result must run the original: what is taken away is the
+            // setting it would build one from, and its own first line answers null with null.
+            hookBefore(
+                COMPUTER_ENGINE_CLASS,
+                "generatePackageInfo",
+                restore = { frame -> putBackArgument(frame, 1) },
+            ) { _, frame, _ ->
+                applySettingNull(frame, 1, Binder.getCallingUid(), ::getCallingApps)
+            }
+            // A caller that cannot see a package and a caller that cannot see one that is not
+            // installed get the same answer here; the filter itself checks no permissions.
+            hookBefore(
                 APPS_FILTER_IMPL_CLASS,
                 "shouldFilterApplication",
-            ) { methodName, frame, returnValue ->
-                applyPackageHiding(
-                    methodName,
+            ) { _, frame, returnValue ->
+                applyFilterHiding(
                     returnValue,
-                    { frame.getArgument(2) as? Int },
-                    { getPackageNameFromPackageSettings(frame.getArgument(4)) },
-                    { _, it ->
-                        Utils.binderLocalScope {
-                            getPackagesForUidMethod.invoke(frame.getArgument(1), it) as? Array<String>
-                        }
-                    },
-                    true,
+                    callerUidOf(frame, 2),
+                    getPackageNameFromPackageSettings(frame.getArgument(4)) as? String,
+                    ::getCallingApps,
                 )
             }
         }

@@ -71,7 +71,8 @@ val gitCommitCount = "git rev-list refs/remotes/origin/main --count".execute().t
 // 432 is the count of commits before the license changed
 val gitCommitCountAfterLicense = gitCommitCount - 432
 
-val minSdkVer = 29
+// Android 12 is the oldest release this module installs on: the hook sets below it are gone.
+val minSdkVer = 31
 extra["minSdkVer"] = minSdkVer
 val targetSdkVer = 37
 extra["targetSdkVer"] = targetSdkVer

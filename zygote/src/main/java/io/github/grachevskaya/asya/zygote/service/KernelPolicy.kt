@@ -23,13 +23,21 @@ object KernelPolicy {
     private const val TAG = "KernelPolicy"
 
     private const val FAMILY_NAME = "tosya"
-    private const val FAMILY_VERSION = 6
+
+    /**
+     * The family version, which the kernel compares with its own before it reads anything
+     * (kaux.h: KAUX_FAMILY_VERSION, and netlink.c: kaux_version()). Every command carries it in the
+     * generic netlink header, and BEGIN reports a mismatch as -EINVAL, so the two numbers have to be
+     * the same one.
+     */
+    internal const val FAMILY_VERSION = 7
 
     // Streaming (kaux.h): BEGIN opens a stream, BATCH carries records, END makes it current.
     private const val CMD_BEGIN = 2
     private const val CMD_BATCH = 3
     private const val CMD_END = 4
     private const val CMD_STATUS = 5
+    private const val CMD_REFRESH = 6
 
     private const val KAUX_OP_ADD = 0
     private const val KAUX_OP_DEL = 1
@@ -40,14 +48,33 @@ object KernelPolicy {
     private const val KIND_POLICY = 0
     private const val KIND_APKS = 1
 
-    // The hidden names, for the cleanup the kernel runs inside the zygote after a fork.
+    /**
+     * The names a caller may not see, in a stream of their own: a stream carries one kind, and the
+     * kernel replaces the whole set of that kind at END (kaux.h: KAUX_KIND_NAMES; netlink.c:
+     * kaux_batch_names()). A name record carries the caller it is hidden from, 0 meaning every one.
+     */
+    internal const val KIND_NAMES = 5
 
     /** Sixteen bytes: the name both halves use. */
     private const val KIND_TOKEN = 4
 
+    // kaux_name_rec: op, caller, name_len, then the name zero padded to a four byte boundary.
+    private const val NAME_REC_WORDS = 3
+
+    /** TOSYA_NAME_MAX: the kernel refuses an empty name and one longer than this. */
+    internal const val NAME_MAX_BYTES = 255
+
+    // The caller range the kernel maps to an app id: TOSYA_APP_MIN/TOSYA_APP_SPAN of uid % 100000.
+    private const val APP_ID_MIN = 10_000
+    private const val APP_ID_SPAN = 10_000
+    private const val APP_ID_MODULUS = 100_000
+
     // Matches the kernel side: 24 MiB of headroom under the 65536 entry cap.
     private const val PAGE_BYTES = 32 * 1024
     private const val MAX_BLOB_BYTES = 24 * 1024 * 1024
+
+    /** KAUX_BATCH_BYTES: the largest single payload the kernel takes, header included. */
+    private const val BATCH_BYTES = 32 * 1024
 
     private const val NETLINK_GENERIC = 16
     private const val GENL_ID_CTRL = 16
@@ -65,8 +92,8 @@ object KernelPolicy {
 
     private val sequence = AtomicInteger(1)
 
-    /** BEGIN{kind}, BATCH{count} + records, END{}. Generations count from 1: 0 means no stream. */
-    private fun beginBlob(kind: Int): ByteArray =
+    /** BEGIN{kind}: the one word struct kaux_begin, and the kind the kernel dispatches the stream on. */
+    internal fun beginBlob(kind: Int): ByteArray =
         ByteBuffer
             .allocate(4)
             .order(ByteOrder.LITTLE_ENDIAN)
@@ -84,6 +111,131 @@ object KernelPolicy {
             .order(ByteOrder.LITTLE_ENDIAN)
             .putInt(count)
             .array() + records
+
+    /**
+     * One BATCH of the policy stream: the count, then 16 byte kaux_policy_rec records of
+     * op, caller, target, flags. The policy is replaced whole, so every record is an ADD.
+     */
+    internal fun policyBatchBlob(
+        pairs: IntArray,
+        from: Int = 0,
+        count: Int = pairs.size / 2,
+    ): ByteArray {
+        require(pairs.size % 2 == 0)
+        require(from >= 0 && count >= 0 && from + count <= pairs.size / 2)
+        val records = ByteBuffer.allocate(count * 16).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until count) {
+            records
+                .putInt(KAUX_OP_ADD)
+                .putInt(pairs[(from + i) * 2])
+                .putInt(pairs[(from + i) * 2 + 1])
+                .putInt(0)
+        }
+
+        return batchBlob(count, records.array())
+    }
+
+    /**
+     * One kaux_name_rec and the name it carries: three words of head, then the bytes zero padded to a
+     * four byte boundary. The kernel walks a batch by `KAUX_NAME_REC_WORDS + (name_len + 3) / 4`
+     * words, so the padding is part of the record and not slack between records.
+     */
+    internal fun nameRecord(
+        caller: Int,
+        name: ByteArray,
+    ): ByteArray {
+        require(name.size in 1..NAME_MAX_BYTES)
+        val padded = (name.size + 3) and 3.inv()
+
+        return ByteBuffer
+            .allocate(NAME_REC_WORDS * 4 + padded)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(KAUX_OP_ADD)
+            .putInt(caller)
+            .putInt(name.size)
+            .put(name)
+            .array()
+    }
+
+    /**
+     * The BATCH blobs of one names stream: one record per (caller, hidden name), cut so one blob stays
+     * inside the kernel's per-message cap. A caller the kernel cannot map to an app id, and a name it
+     * would refuse, are left out here rather than sent to be counted as refusals on the other side.
+     */
+    internal fun nameBatches(tables: Map<Int, HideTables>): List<ByteArray> {
+        val batches = ArrayList<ByteArray>()
+        var records = ArrayList<ByteArray>()
+        var bytes = 4 // the batch's own count word
+
+        fun flush() {
+            if (records.isEmpty()) return
+            batches.add(batchBlob(records.size, concat(records)))
+            records = ArrayList()
+            bytes = 4
+        }
+
+        for ((caller, table) in tables) {
+            if (!callerIsApp(caller)) continue
+            for (name in table.hidden) {
+                val encoded = name.toByteArray(Charsets.UTF_8)
+                if (encoded.size !in 1..NAME_MAX_BYTES) continue
+                val record = nameRecord(caller, encoded)
+                if (bytes + record.size > BATCH_BYTES) flush()
+                records.add(record)
+                bytes += record.size
+            }
+        }
+        flush()
+
+        return batches
+    }
+
+    /** The caller a name record names: 0 is every caller, anything else an app uid (dir_caller_app_of). */
+    private fun callerIsApp(caller: Int): Boolean {
+        val app = caller % APP_ID_MODULUS
+
+        return app >= APP_ID_MIN && app < APP_ID_MIN + APP_ID_SPAN
+    }
+
+    private fun concat(records: List<ByteArray>): ByteArray {
+        val out = ByteArray(records.sumOf { it.size })
+        var at = 0
+        for (record in records) {
+            record.copyInto(out, at)
+            at += record.size
+        }
+
+        return out
+    }
+
+    /**
+     * Asks the kernel to look for the protected directories again. A user that was added since the module
+     * loaded has a tree nothing was registered on, and its names would be answered by the filesystem.
+     */
+    fun refresh(): Boolean {
+        return try {
+            val fd = Os.socket(OsConstants.AF_NETLINK, OsConstants.SOCK_RAW, NETLINK_GENERIC)
+            try {
+                Os.setsockoptTimeval(
+                    fd,
+                    OsConstants.SOL_SOCKET,
+                    OsConstants.SO_RCVTIMEO,
+                    StructTimeval.fromMillis(2_000),
+                )
+                val family = resolveFamily(fd)
+                if (family <= 0) {
+                    logI(TAG) { "The kernel half is not loaded (no $FAMILY_NAME family)" }
+                    return false
+                }
+                call(fd, family, CMD_REFRESH, ByteArray(0))
+            } finally {
+                Os.close(fd)
+            }
+        } catch (cause: Throwable) {
+            logE(TAG) { "The kernel refused the directory refresh: $cause" }
+            false
+        }
+    }
 
     @Synchronized
     fun push(pairs: IntArray): Boolean {
@@ -127,16 +279,8 @@ object KernelPolicy {
                 while (at < total) {
                     // The 8 byte batch header counts against the kernel's per-message cap.
                     val n = minOf((PAGE_BYTES - 8) / 16, total - at)
-                    val rec = ByteBuffer.allocate(n * 16).order(ByteOrder.LITTLE_ENDIAN)
-                    for (i in 0 until n) {
-                        rec
-                            .putInt(KAUX_OP_ADD)
-                            .putInt(pairs[(at + i) * 2])
-                            .putInt(pairs[(at + i) * 2 + 1])
-                            .putInt(0)
-                    }
 
-                    if (!call(fd, family, CMD_BATCH, batchBlob(n, rec.array()))) {
+                    if (!call(fd, family, CMD_BATCH, policyBatchBlob(pairs, at, n))) {
                         logE(TAG) { "The kernel refused $n policy record(s) at $at" }
                         return false
                     }
@@ -202,6 +346,59 @@ object KernelPolicy {
             logW(TAG, cause) { "Could not hand the name to the kernel half" }
 
             return false
+        }
+    }
+
+    /**
+     * Hands over the names each caller may not see, as a stream of its own. A stream is the whole set
+     * of its kind: the kernel keeps nothing of the previous one, so an empty set is a stream with no
+     * BATCH and that is what clears it.
+     */
+    @Synchronized
+    fun pushHiddenNames(tables: Map<Int, HideTables>): Boolean {
+        val batches = nameBatches(tables)
+
+        return try {
+            val fd = Os.socket(OsConstants.AF_NETLINK, OsConstants.SOCK_RAW, NETLINK_GENERIC)
+            try {
+                Os.setsockoptTimeval(
+                    fd,
+                    OsConstants.SOL_SOCKET,
+                    OsConstants.SO_RCVTIMEO,
+                    StructTimeval.fromMillis(2_000),
+                )
+
+                val family = resolveFamily(fd)
+                if (family <= 0) {
+                    logI(TAG) { "The kernel half is not loaded (no $FAMILY_NAME family)" }
+                    return false
+                }
+
+                if (!call(fd, family, CMD_BEGIN, beginBlob(KIND_NAMES))) {
+                    logE(TAG) { "The kernel refused the beginning of the hidden-name stream" }
+                    return false
+                }
+
+                for (batch in batches) {
+                    if (!call(fd, family, CMD_BATCH, batch)) {
+                        logE(TAG) { "The kernel refused a hidden-name batch of ${batch.size - 4} byte(s)" }
+                        return false
+                    }
+                }
+
+                if (!call(fd, family, CMD_END, endBlob())) {
+                    logE(TAG) { "The kernel refused the end of the hidden-name stream" }
+                    return false
+                }
+
+                logI(TAG) { "Handed the kernel half ${batches.size} hidden-name batch(es) for ${tables.size} caller(s)" }
+                true
+            } finally {
+                Os.close(fd)
+            }
+        } catch (cause: Throwable) {
+            logE(TAG, cause) { "Could not reach the kernel half with the hidden names" }
+            false
         }
     }
 
@@ -275,13 +472,7 @@ object KernelPolicy {
                     if (batch.isEmpty()) {
                         return true
                     }
-                    val records = ByteArray(batch.sumOf { it.size })
-                    var at = 0
-                    for (one in batch) {
-                        System.arraycopy(one, 0, records, at, one.size)
-                        at += one.size
-                    }
-                    val ok = call(fd, family, CMD_BATCH, batchBlob(batch.size, records))
+                    val ok = call(fd, family, CMD_BATCH, batchBlob(batch.size, concat(batch)))
                     if (!ok) {
                         logE(TAG) { "The kernel refused ${batch.size} apk record(s)" }
                     }
@@ -399,6 +590,8 @@ object KernelPolicy {
         if (u32(reply, offset + 4) != MIN_STATUS_LENGTH.toLong()) {
             return linkedMapOf("state" to "status of ${u32(reply, offset + 4)} bytes, not $MIN_STATUS_LENGTH")
         }
+        // The one field that says which half wrote this: a kernel of another family version writes the
+        // record at another size and its fields elsewhere, so both numbers are named here.
         val family = u32(reply, offset + 8)
         if (family != FAMILY_VERSION.toLong()) {
             return linkedMapOf("state" to "kernel family version $family, this half speaks $FAMILY_VERSION")
@@ -416,14 +609,19 @@ object KernelPolicy {
             "apkFailedTotal" to u32(reply, offset + 44).toString(),
             "lastError" to i32(reply, offset + 48).toString(),
             "apkUpdates" to u32(reply, offset + 52).toString(),
-            "vaBits" to u32(reply, offset + 56).toString(),
-            "pageShift" to u32(reply, offset + 60).toString(),
-            "uidTier" to cString(reply, offset + 64, 32),
-            "setuidTier" to cString(reply, offset + 96, 32),
-            "token0" to u32(reply, offset + 128).toString(),
-            "token1" to u32(reply, offset + 132).toString(),
-            "token2" to u32(reply, offset + 136).toString(),
-            "token3" to u32(reply, offset + 140).toString(),
+            // The directory guard: how many names the last set carried, how many parents are watched,
+            // and how many records the kernel refused (kaux.h: hidden_names, hidden_guards, hidden_failed).
+            "hiddenNames" to u32(reply, offset + 56).toString(),
+            "hiddenGuards" to u32(reply, offset + 60).toString(),
+            "hiddenFailed" to u32(reply, offset + 64).toString(),
+            "vaBits" to u32(reply, offset + 68).toString(),
+            "pageShift" to u32(reply, offset + 72).toString(),
+            "uidTier" to cString(reply, offset + 76, 32),
+            "setuidTier" to cString(reply, offset + 108, 32),
+            "token0" to u32(reply, offset + 140).toString(),
+            "token1" to u32(reply, offset + 144).toString(),
+            "token2" to u32(reply, offset + 148).toString(),
+            "token3" to u32(reply, offset + 152).toString(),
         )
     }
 
@@ -498,7 +696,9 @@ object KernelPolicy {
             NLMSG_ERROR -> {
                 val errno = i32(reply, NLMSG_HEADER)
                 if (errno != 0) {
-                    logE(TAG) { "The kernel refused cmd $cmd with $errno" }
+                    // The version this half put in the header is what the kernel compared first, so a
+                    // refusal names it: -EINVAL from BEGIN is what a family version mismatch looks like.
+                    logE(TAG) { "The kernel refused cmd $cmd with $errno (this half speaks family version $FAMILY_VERSION)" }
                     false
                 } else {
                     true

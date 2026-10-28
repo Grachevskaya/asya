@@ -3,6 +3,7 @@ package io.github.grachevskaya.asya.zygote.service
 import android.content.pm.ApplicationInfo
 import io.github.grachevskaya.asya.common.Utils.getInstalledApplicationsCompat
 import io.github.grachevskaya.asya.common.Utils.getPackageInfoCompat
+import io.github.grachevskaya.asya.common.storageIsUnlocked
 import io.github.grachevskaya.asya.zygote.util.Logcat.logD
 import io.github.grachevskaya.asya.zygote.util.Logcat.logI
 import io.github.grachevskaya.asya.zygote.util.Logcat.logW
@@ -10,6 +11,7 @@ import io.github.grachevskaya.asya.zygote.util.UserManagerUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 // The one place the kernel is told what to watch; a pass is never run twice at once.
@@ -36,9 +38,33 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
              * behind them are on the device's encrypted-at-boot half, and the module's own rules
              * come from /data/adb. The one pass that does read an app's files is the native
              * library pass, and that one waits for itself. */
-            val pairs = buildPolicyPairs()
-            logI(TAG) { "Policy for the kernel: ${pairs.size / 2} pair(s)" }
+            val policy = buildPolicyTables()
+            val pairs = policy.pairs
+            // What the kernel is handed is also what the query path reads, so both decide from one pass.
+            dataHolder.publishPolicy(pairs, policy.hideTables)
+            // The two sets behind the same pairs, decided here with them and published once: the names
+            // each caller may not see, and the names the user has installed at all. The query path
+            // reads them instead of deciding anything, and it reads both whichever answer it gives, so
+            // a hidden name and a name that is not installed are answered the same way.
+            // A push that decided nothing (a policy that is not readable yet, a moment with no callers)
+            // must not replace a table that was already right: an empty table hides nothing.
+            logI(TAG) { "Policy for the kernel: ${pairs.size / 2} pair(s), ${policy.hideTables.size} caller table(s)" }
             val policySaved = KernelPolicy.push(pairs)
+            // The names are a stream of their own: a stream carries one kind, and the kernel replaces
+            // the whole set of names at its END, so the pass that decided the pairs decides them too.
+            val namesSaved = KernelPolicy.pushHiddenNames(policy.hideTables)
+
+            /* The apk table is every installed package and the files behind them, which is a full
+             * enumeration of the user's half and is only complete once that half is readable.
+             * Building it before the unlock is what held a boot at the lock screen, so the pairs
+             * above go now and the table is left to the unlock -- see awaitUnlockForApkTable. */
+            if (!storageIsUnlocked(systemServerContext())) {
+                logI(TAG) { "The apk table waits for the user's unlock" }
+                awaitUnlockForApkTable()
+
+                return@run
+            }
+            KernelPolicyPusher.apkTableWaitsForUnlock.set(false)
 
             val apks = buildApkTable(pairs)
             logIsolationClasses()
@@ -59,12 +85,15 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
 
             val failed = status["apkFailed"]?.toIntOrNull()
 
-            if (policySaved && apksSaved && failed == 0 && status["apkInodes"]?.toIntOrNull() != null) {
+            if (policySaved && namesSaved && apksSaved && failed == 0 && status["apkInodes"]?.toIntOrNull() != null) {
                 // A table that landed is what the budget is for. Handing it back means the next thing
                 // that needs a retry gets one, instead of being told the budget was spent at boot.
                 KernelPolicyPusher.apkRetries.set(0)
             } else {
-                logI(TAG) { "The apk table did not land (entries=" + apks.size + ", failed=" + failed + "; retrying)" }
+                logI(TAG) {
+                    "The apk table did not land (entries=" + apks.size + ", failed=" + failed +
+                        ", names=" + namesSaved + "; retrying)"
+                }
                 scheduleApkRetry()
             }
         } catch (cause: Throwable) {
@@ -72,6 +101,36 @@ internal fun AsyaService.pushPolicyToKernelOnce() {
             scheduleApkRetry()
         }
     }
+}
+
+/**
+ * The apk table waits for the unlock on a thread of its own, once per boot.
+ *
+ * The wait has no deadline -- a device can sit at the lock screen for as long as its owner leaves it
+ * there -- so the push that asked for the table is not held by it: that push has done its work, and
+ * the unlock is what asks for the next one.
+ */
+private fun AsyaService.awaitUnlockForApkTable() {
+    // One wait, not one per pass: a configuration push or a package transaction before the unlock
+    // asks for the table again, and each of those would otherwise start a thread of its own.
+    if (!KernelPolicyPusher.apkTableWaitsForUnlock.compareAndSet(false, true)) return
+
+    Thread {
+        if (!waitForUserUnlocked()) {
+            // There is nothing to wait on: the bounded retry is what covers this boot.
+            logW(TAG) { "Could not wait for the unlock; retrying the apk table" }
+            KernelPolicyPusher.apkTableWaitsForUnlock.set(false)
+            scheduleApkRetry()
+
+            return@Thread
+        }
+
+        logI(TAG) { "The user is unlocked; the apk table follows" }
+        pushPolicyToKernel()
+    }.apply {
+        isDaemon = true
+        name = "asya-apk-unlock"
+    }.start()
 }
 
 /**
@@ -368,26 +427,63 @@ private fun nativeLibPaths(
         return paths
     }
 
-internal fun AsyaService.buildPolicyPairs(): IntArray {
+/**
+ * What one pass over the installed packages decides: the pairs the kernel is handed, and the table the
+ * query path reads. Both come from the same walk of the same package list, so the kernel and the hooks
+ * cannot be told different things.
+ */
+private class PolicyTables(
+    val pairs: IntArray,
+    val hideTables: Map<Int, HideTables>,
+    val ownerByPackage: Map<String, Int>,
+)
+
+private fun AsyaService.buildPolicyTables(): PolicyTables {
     val pairs = LinkedHashSet<Long>()
+    // Per caller uid: the names it may not see, and the names the user has at all. Two caller packages
+    // that are one application share a uid and therefore share one entry.
+    val hiddenByCaller = HashMap<Int, MutableSet<String>>()
+    val installedByCaller = HashMap<Int, Set<String>>()
     val callerPackages = config.scope.keys.toList()
 
     var targets = 0
+    // A name record names the uid the directory belongs to: the kernel asks the policy whether this
+    // caller may see that uid, the same question the uid queries ask.
+    val ownerByPackage = HashMap<String, Int>()
 
     for (userId in UserManagerUtils.getUsers(false, false, false).map { it.id }.distinct()) {
         val packages = pms.getInstalledApplicationsCompat(0L, userId)
+        targets += packages.size
+        val installed = packages.mapTo(HashSet<String>(packages.size)) { it.packageName }
 
-        for (app in packages) {
-            targets++
-            val target = app.packageName
+        for (caller in callerPackages) {
+            //noinspection NewApi
+            val callerUid = pms.getPackageUid(caller, 0L, userId)
+            if (callerUid < 0) continue
 
-            for (caller in callerPackages) {
+            // A caller whose enumeration came back empty has no table: a table with no installed names
+            // would answer every name as absent, which is worse than not hiding at all.
+            if (installed.isEmpty()) continue
+
+            val hidden = hiddenByCaller.getOrPut(callerUid) { HashSet() }
+            // Every user's names, not the last user's: one uid serves them all, and a set that carried only
+            // the last profile would answer every other name as not installed.
+            installedByCaller[callerUid] =
+                installedByCaller[callerUid]?.let { it + installed } ?: installed.toSet()
+
+            for (app in packages) {
+                val target = app.packageName
+                val targetUid = app.uid
+                // A package is never hidden from itself, and the check comes before the name is
+                // recorded: the kernel hides a directory by that name, so a name left in the set would
+                // take the caller's own device-encrypted directory away and its process could not start.
+                if (targetUid > 0 && targetUid == callerUid) continue
                 if (!shouldHide(caller, target, userId)) continue
 
-                //noinspection NewApi
-                val callerUid = pms.getPackageUid(caller, 0L, userId)
-                val targetUid = app.uid
-                if (callerUid < 0 || targetUid <= 0) continue
+                hidden.add(target)
+                if (targetUid <= 0) continue
+
+                ownerByPackage[target] = targetUid
 
                 pairs.add((callerUid.toLong() shl 32) or (targetUid.toLong() and 0xffffffffL))
             }
@@ -402,7 +498,13 @@ internal fun AsyaService.buildPolicyPairs(): IntArray {
         out[i++] = (packed ushr 32).toInt()
         out[i++] = packed.toInt()
     }
-    return out
+
+    val tables = HashMap<Int, HideTables>(hiddenByCaller.size)
+    for ((callerUid, hidden) in hiddenByCaller) {
+        tables[callerUid] = HideTables(hidden, installedByCaller[callerUid].orEmpty())
+    }
+
+    return PolicyTables(out, tables, ownerByPackage)
 }
 
 /*
@@ -412,4 +514,7 @@ internal fun AsyaService.buildPolicyPairs(): IntArray {
 internal object KernelPolicyPusher {
     /** How many times the apk table has been retried; it cannot resolve before /data is readable. */
     internal val apkRetries = AtomicInteger()
+
+    /** True while a thread waits for the unlock the apk table cannot be built without. */
+    internal val apkTableWaitsForUnlock = AtomicBoolean()
 }

@@ -54,6 +54,20 @@ internal fun AsyaService.packageModel(): Map<*, *>? {
 }
 
 /**
+ * The uid the parsed package table holds for a package: the name a query was given, turned into the
+ * integer the hide table is keyed by. This is the read that must not go through the package manager
+ * -- it runs inside a package manager hook -- and it goes to the table that service is holding, which
+ * is where the uid already is. Null when the table or the entry cannot be read, and the query is then
+ * answered by name instead.
+ */
+internal fun AsyaService.packageUid(packageName: String): Int? =
+    runCatching {
+        val packages = packageModel() ?: return@runCatching null
+        val androidPackage = packages[packageName] ?: return@runCatching null
+        (androidPackage.javaClass.getMethod("getUid").invoke(androidPackage) as? Int)?.takeIf { it > 0 }
+    }.getOrNull()
+
+/**
  * Native library names this package declares. The parsed model holds them as
  * Map<String, PackageManager.Property> -- key is the property name, the value carries
  * the string -- for the package and for each service. Anything unreadable returns null

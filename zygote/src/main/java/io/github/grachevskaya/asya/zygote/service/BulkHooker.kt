@@ -26,9 +26,21 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 class BulkHooker {
-    private companion object {
+    internal companion object {
         const val PARAMETER_COUNT_UNKNOWN = -1
+
+        /**
+         * The value a hook call decides with, reused per thread: a hook runs on the thread that made
+         * the call, hundreds of times a second, and a fresh object for each of them is garbage in a
+         * process whose collections are the framework's pauses.
+         */
+        val threadReturnValues = ThreadLocal.withInitial { ReturnValuePool() }
     }
+
+    /** A value with nothing of the call before it, for the call about to run. */
+    private fun acquireReturnValue() = threadReturnValues.get().acquire()
+
+    private fun releaseReturnValue(value: ReturnValue) = threadReturnValues.get().release(value)
 
     var hooksWasCrashed = false
 
@@ -69,37 +81,39 @@ class BulkHooker {
         }
     }
 
+    /**
+     * A hook that runs before the original, with the half that runs after it.
+     *
+     * [restore] is the other half of a rewrite of the arguments: it runs once the original is done,
+     * whatever the original answered, and before the answer is written back. It is here rather than
+     * in a second registration because the hooking library puts one transformer in front of a method
+     * -- a second registration on the same method replaces this one instead of nesting inside it --
+     * so the two halves of one call are one hook.
+     */
     internal fun hookBefore(
         clazz: String,
         methodName: String,
         argumentCount: Int = PARAMETER_COUNT_UNKNOWN,
+        restore: ((frame: EmulatedStackFrame) -> Unit)? = null,
         hook: (methodName: String, frame: EmulatedStackFrame, returnValue: ReturnValue) -> Unit,
     ) = addHook(clazz, methodName, argumentCount) { original, frame ->
-        val value = ReturnValue()
+        val value = acquireReturnValue()
 
         try {
-            hook(methodName, frame, value)
-        } catch (it: Throwable) {
-            logE(ZygoteEntry.TAG, it) { it.message ?: "Unknown error on hook" }
-        }
-
-        if (!value.replace) {
-            try {
-                invokeExactCompat(clazz, methodName, original, frame, value)
-            } catch (it: Throwable) {
-                logD(ZygoteEntry.TAG, it) { it.message ?: "Unknown error on original function" }
-                value.throwable = it
-            }
-        }
-
-        value.throwable?.let {
-            ServiceUtils.clearStackTraces(it)
-
-            throw it
-        }
-
-        if (value.replace) {
-            frame.setReturnValue(value.result)
+            HookDispatch.before(
+                value = value,
+                hook = { hook(methodName, frame, value) },
+                invokeOriginal = { invokeExactCompat(clazz, methodName, original, frame, value) },
+                restore = { restore?.invoke(frame) },
+                // Message only, never the throwable: a stack logged here names this module, its
+                // hooking library and its obfuscation maps, and any reader of the log sees it.
+                onHookError = { logE(ZygoteEntry.TAG) { it.message ?: "Unknown error on hook" } },
+                onOriginalError = { logD(ZygoteEntry.TAG) { it.message ?: "Unknown error" } },
+                writeResult = { frame.setReturnValue(value.result) },
+                clearFrames = ServiceUtils::clearStackTraces,
+            )
+        } finally {
+            releaseReturnValue(value)
         }
     }
 
@@ -110,34 +124,29 @@ class BulkHooker {
         handleAfterThrows: Boolean = false,
         hook: (methodName: String, frame: EmulatedStackFrame, returnValue: ReturnValue) -> Unit,
     ) = addHook(clazz, methodName, argumentCount) { original, frame ->
-        val value = ReturnValue()
+        val value = acquireReturnValue()
 
         try {
-            invokeExactCompat(clazz, methodName, original, frame, value)
-        } catch (it: Throwable) {
-            logD(ZygoteEntry.TAG, it) { it.message ?: "Unknown error on original function" }
-            value.throwable = it
+            HookDispatch.after(
+                value = value,
+                invokeOriginal = { invokeExactCompat(clazz, methodName, original, frame, value) },
+                readResult = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        value.result = frame.accessor().getValue(RETURN_VALUE_IDX)
+                    }
+                },
+                hook = { hook(methodName, frame, value) },
+                // Message only, never the throwable: a stack logged here names this module, its
+                // hooking library and its obfuscation maps, and any reader of the log sees it.
+                onHookError = { logE(ZygoteEntry.TAG) { it.message ?: "Unknown error on hook" } },
+                onOriginalError = { logD(ZygoteEntry.TAG) { it.message ?: "Unknown error" } },
+                handleAfterThrows = handleAfterThrows,
+                writeResult = { frame.setReturnValue(value.result) },
+                clearFrames = ServiceUtils::clearStackTraces,
+            )
+        } finally {
+            releaseReturnValue(value)
         }
-
-        if (value.throwable == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            value.result = frame.accessor().getValue(RETURN_VALUE_IDX)
-        }
-
-        if (handleAfterThrows || value.throwable == null) {
-            try {
-                hook(methodName, frame, value)
-            } catch (it: Throwable) {
-                logE(ZygoteEntry.TAG, it) { it.message ?: "Unknown error on hook" }
-            }
-        }
-
-        value.throwable?.let {
-            ServiceUtils.clearStackTraces(it)
-
-            throw it
-        }
-
-        frame.setReturnValue(value.result)
     }
 
     private fun applyHook(
@@ -228,40 +237,6 @@ class BulkHooker {
         } else {
             Transformers.invokeExactNoChecks(original, frame)
         }
-    }
-
-    fun findAltMethod(
-        clazzNames: List<String>,
-        methodNames: List<String>,
-        argumentCount: Int = PARAMETER_COUNT_UNKNOWN,
-        loader: ClassLoader? = SystemServerHook.classLoader,
-    ): Executable? {
-        for (clazz in clazzNames) {
-            var curClazz =
-                try {
-                    Class.forName(clazz, true, loader)
-                } catch (ex: ClassNotFoundException) {
-                    logE(ZygoteEntry.TAG, ex) { "Class $clazz not found" }
-                    continue
-                }
-
-            var methods = listOf<Executable>()
-            while (
-                methods.isEmpty() &&
-                curClazz != null &&
-                curClazz.javaClass.simpleName != "Object"
-            ) {
-                methods =
-                    methodNames.mapNotNull {
-                        resolveExecutable(curClazz, it, argumentCount)
-                    }
-                curClazz = curClazz.superclass
-            }
-
-            return methods.firstOrNull() ?: continue
-        }
-
-        return null
     }
 
     private fun resolveExecutable(

@@ -15,27 +15,28 @@ class KernelStatusParseTest {
 
     /** One record, in the order the kernel writes it, with every field a value of its own. */
     private fun status(overrides: Map<Int, Long> = emptyMap()): ByteArray {
-        val bytes = ByteArray(144)
+        val bytes = ByteArray(156)
 
         writeI32(bytes, 0, magic)
-        writeI32(bytes, 4, 144L)
-        writeI32(bytes, 128, 0x03020100L)
-        writeI32(bytes, 132, 0x87868584L)
-        writeI32(bytes, 136, 0x0b0a0908L)
-        writeI32(bytes, 140, 0xfffefdfcL)
+        writeI32(bytes, 4, 156L)
+        writeI32(bytes, 140, 0x03020100L)
+        writeI32(bytes, 144, 0x87868584L)
+        writeI32(bytes, 148, 0x0b0a0908L)
+        writeI32(bytes, 152, 0xfffefdfcL)
 
-        // version, flags, then the native and compat pairs, each a u32 of its own. The version
-        // is the family's own: it is one of the two fields the record is checked against, along
-        // with its size, so a fixture that invented a number here would not be a record the
-        // kernel could have written.
-        (1L..13L).forEach { field ->
+        // version, flags, then the native and compat pairs, each a u32 of its own, then the apk
+        // counters, the directory guard's three counts, and the geometry. The version is the
+        // family's own: it is one of the two fields the record is checked against, along with its
+        // size, so a fixture that invented a number here would not be a record the kernel could
+        // have written.
+        (1L..17L).forEach { field ->
             writeI32(bytes, 4 + field.toInt() * 4, field)
         }
-        writeI32(bytes, 8, 6L)
+        writeI32(bytes, 8, 7L)
 
-        // The two tier names sit at 64 and 96, NUL-terminated.
-        writeString(bytes, 64, "uid-tier")
-        writeString(bytes, 96, "setuid-tier")
+        // The two tier names sit after the geometry, NUL-terminated.
+        writeString(bytes, 76, "uid-tier")
+        writeString(bytes, 108, "setuid-tier")
 
         overrides.forEach { (at, value) -> writeI32(bytes, at, value) }
 
@@ -111,7 +112,7 @@ class KernelStatusParseTest {
         val status = parse(status())
 
         assertEquals("loaded", status["state"])
-        assertEquals("6", status["version"])
+        assertEquals("7", status["version"])
         assertEquals("2", status["flags"])
         assertEquals("3/4", status["native"])
         assertEquals("5/6", status["compat"])
@@ -121,7 +122,18 @@ class KernelStatusParseTest {
         assertEquals("10", status["apkFailedTotal"])
         assertEquals("11", status["lastError"])
         assertEquals("12", status["apkUpdates"])
-        assertEquals("13", status["vaBits"])
+        assertEquals("13", status["hiddenNames"])
+        assertEquals("14", status["hiddenGuards"])
+        assertEquals("15", status["hiddenFailed"])
+        assertEquals("16", status["vaBits"])
+        assertEquals("17", status["pageShift"])
+    }
+
+    /** The fixed record is a struct, and its own size is the first thing the reader checks. */
+    @Test
+    fun theFixedRecordIsTheSizeTheKernelWrites() {
+        assertEquals(156, KernelConstants.MIN_STATUS_LENGTH)
+        assertEquals(156, status().size)
     }
 
     @Test

@@ -39,7 +39,7 @@ internal fun AsyaService.waitForUserUnlocked(): Boolean {
 }
 
 /** The system_server's own application context: it runs in user 0. */
-private fun systemServerContext(): android.content.Context? =
+internal fun AsyaService.systemServerContext(): android.content.Context? =
     runCatching {
         android.app.ActivityThread::class.java
             .getMethod("currentActivityThread")
